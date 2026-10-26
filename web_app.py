@@ -80,6 +80,7 @@ class BotManager:
                     "equity": float(acc.equity),
                     "margin": float(acc.margin),
                     "free_margin": float(acc.margin_free),
+                    "margin_level": float(acc.margin_level or 0.0),
                     "currency": acc.currency,
                     "algo_trading_allowed": bool(ti.trade_allowed) if ti else False,
                 }

@@ -256,7 +256,9 @@
             <span id="badge-chart-status" class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700">PAUSED (BOT IDLE)</span>
           </div>
           <div class="text-xs font-mono text-slate-500 dark:text-slate-400">
-            Account Equity: <span id="txt-equity" class="text-emerald-600 dark:text-emerald-400 font-bold">$0.00</span>
+            Equity: <span id="txt-equity" class="text-emerald-600 dark:text-emerald-400 font-bold">$0.00</span>
+            <span class="text-slate-300 dark:text-slate-700 mx-1">&bull;</span>
+            Free Margin: <span id="txt-free-margin" class="text-amber-600 dark:text-amber-400 font-bold">$0.00</span>
           </div>
         </div>
         <div class="relative flex-1 min-h-[260px] w-full">
@@ -433,6 +435,15 @@
             <span class="text-slate-700 dark:text-slate-300 font-medium">RSI Climax Guard (Block Buy &gt; 70, Sell &lt; 30)</span>
           </label>
         </div>
+        <div>
+          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Min Free Margin Guard ($)</label>
+          <input type="number" step="1.0" id="cfg-min_free_margin" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="default 10.0">
+        </div>
+        <div>
+          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Min Margin Level Guard (%)</label>
+          <input type="number" step="10.0" id="cfg-min_margin_level" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="default 200.0">
+        </div>
+
         <div class="col-span-2 pt-2">
           <label class="flex items-center space-x-2 cursor-pointer select-none">
             <input type="checkbox" id="cfg-break_time" class="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700">
@@ -649,6 +660,10 @@
         document.getElementById('badge-algo').title = isAlgoOn ? 'Algo Trading is active in MT5' : 'Click the Algo Trading button in MT5 toolbar to enable';
 
         document.getElementById('txt-equity').innerText = `$${s.account.equity.toFixed(2)}`;
+        const freeEl = document.getElementById('txt-free-margin');
+        if (freeEl && s.account.free_margin !== undefined) {
+          freeEl.innerText = `$${s.account.free_margin.toFixed(2)}`;
+        }
       }
 
       // Market Live / Closed Status
@@ -1098,6 +1113,8 @@
         max_ma_dist: parseFloat(document.getElementById('cfg-max_ma_dist').value) || 0.0,
         min_entry_gap_sec: parseInt(document.getElementById('cfg-min_entry_gap_sec').value) || 15,
         rsi_filter: document.getElementById('cfg-rsi_filter').checked,
+        min_free_margin: parseFloat(document.getElementById('cfg-min_free_margin').value) || 10.0,
+        min_margin_level: parseFloat(document.getElementById('cfg-min_margin_level').value) || 200.0,
         break_time: document.getElementById('cfg-break_time').checked
       };
       const res = await fetch('/api/config', {

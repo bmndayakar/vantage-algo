@@ -67,6 +67,9 @@ class Cfg:
     rsi_ob: float = 70.0                 # RSI overbought threshold
     rsi_os: float = 30.0                 # RSI oversold threshold
     break_time: bool = False             # True: finish open trades, but block new initial entries
+    min_free_margin: float = 10.0        # Min free margin ($) required before allowing a new entry
+    margin_buffer_pct: float = 20.0      # Required free margin safety buffer % over required margin
+    min_margin_level: float = 200.0      # Min account margin level % required to allow opening trades
     enable_log: bool = True
     log_file: str = "up_down_tracker_decisions_py.csv"   # separate from the EA's CSV
 
@@ -78,7 +81,7 @@ class Bot:
         s.status = "Initializing..."; s.basket = 0.0; s.last_exit = 0; s.open_time = 0; s.ma = 0.0
         s.daily = 0.0; s.deals = 0; s.nopen = 0; s.tp_price = 0.0; s.dir = 0
         s.peak = 0.0; s.trail_stop = 0.0; s.flip = 0; s.exposure = 0.0
-        s.dist_ma = 0.0; s.rsi = 50.0
+        s.dist_ma = 0.0; s.rsi = 50.0; s.margin_cooldown_until = 0
         s.events = []
 
     # ---- CSV decision log ----
@@ -187,10 +190,16 @@ class Bot:
             if (not c.trail_on) and s.nopen == 1 and total >= c.target_profit:
                 s.log("CLOSE", "-", "scalp-tp", bid, total, total); s.close_all(); return
             if s.nopen < c.grid_max_legs and total <= -(s.nopen * c.grid_step_loss):
+                if tc < s.margin_cooldown_until:
+                    s.status = f"GRID WAIT MARGIN ({s.margin_cooldown_until - tc}s)"; return
                 ok, rc = s.br.order(1 if has_buy else -1)
                 side = "BUY" if has_buy else "SELL"
-                if ok: s.log("ENTRY", side, "grid-add", bid, total, 0.0)
-                else: s.log("SKIP", side, f"grid-add-failed rc={rc}", bid, total, 0.0)
+                if ok:
+                    s.log("ENTRY", side, "grid-add", bid, total, 0.0)
+                else:
+                    s.log("SKIP", side, f"grid-add-failed rc={rc}", bid, total, 0.0)
+                    s.margin_cooldown_until = tc + 60
+                    s.status = f"GRID MARGIN GUARD: {rc}"
             return
 
         # 3. single-leg scalp / stop (non-grid mode)
@@ -204,14 +213,21 @@ class Bot:
 
         # 4. NEW ENTRY SIGNAL
         if s.nopen == 0:
+            if tc < s.margin_cooldown_until:
+                s.status = f"MARGIN COOLDOWN {s.margin_cooldown_until - tc}s"; return
             if c.break_time: s.status = "☕ BREAK TIME (Tracking, no entries)"; s.flip = 0; return
             if s.daily >= c.daily_goal: s.status = "GOAL REACHED"; s.flip = 0; return
             if s.flip != 0 and not s.allowed(s.flip): s.flip = 0
             if s.flip != 0:                               # one-shot reversal entry (no cooldown, no MA vote)
                 fd, s.flip = s.flip, 0
                 ok, rc = s.br.order(fd); fs = "BUY" if fd > 0 else "SELL"
-                if ok: s.log("ENTRY", fs, "flip-reversal", bid, 0.0, 0.0)
-                else: s.log("SKIP", fs, f"flip-failed rc={rc}", bid, 0.0, 0.0)
+                if ok:
+                    s.log("ENTRY", fs, "flip-reversal", bid, 0.0, 0.0)
+                else:
+                    s.log("SKIP", fs, f"flip-failed rc={rc}", bid, 0.0, 0.0)
+                    s.last_exit = tc
+                    s.margin_cooldown_until = tc + 60
+                    s.status = f"MARGIN GUARD: {rc}"
                 return
             since = tc - s.last_exit
             if s.last_exit > 0 and since < c.min_entry_gap_sec:
@@ -246,8 +262,13 @@ class Bot:
                     ago = s.br.ma_ago(c.slope_bars)
                     if not ago or (s.ma - ago) * d <= 0: s.status = f"WAIT SLOPE {'BUY' if d > 0 else 'SELL'}"; return
                 ok, rc = s.br.order(d); side = "BUY" if d > 0 else "SELL"
-                if ok: s.log("ENTRY", side, "ma-signal", bid, 0.0, 0.0)
-                else: s.log("SKIP", side, f"ma-signal-failed rc={rc}", bid, 0.0, 0.0)
+                if ok:
+                    s.log("ENTRY", side, "ma-signal", bid, 0.0, 0.0)
+                else:
+                    s.log("SKIP", side, f"ma-signal-failed rc={rc}", bid, 0.0, 0.0)
+                    s.last_exit = tc
+                    s.margin_cooldown_until = tc + 60
+                    s.status = f"MARGIN GUARD: {rc}"
             else:
                 s.status = f"CALCULATING MA ({c.tf} {c.ma_period})"
                 return
@@ -385,7 +406,45 @@ class MT5Broker:
         if i is None: return m.ORDER_FILLING_RETURN
         return {1: m.ORDER_FILLING_FOK, 2: m.ORDER_FILLING_IOC}.get(i.filling_mode & 3, m.ORDER_FILLING_RETURN)
 
+    def check_margin(s, d, lots=None):
+        m = s.mt5
+        acc = m.account_info()
+        if acc is None:
+            return False, "NO_ACCOUNT_INFO"
+        free = float(acc.margin_free)
+        vol = lots or s.c.lots
+        t = m.symbol_info_tick(s.c.symbol)
+        if t is None or t.ask <= 0 or t.bid <= 0:
+            return False, "NO_TICK"
+        price = t.ask if d > 0 else t.bid
+        order_type = m.ORDER_TYPE_BUY if d > 0 else m.ORDER_TYPE_SELL
+        needed = m.order_calc_margin(order_type, s.c.symbol, vol, price)
+        if needed is None or needed <= 0:
+            lev = acc.leverage if acc.leverage > 0 else 100
+            needed = (vol * 100.0 * price) / lev
+        needed = float(needed)
+
+        # 1. Absolute free margin floor
+        if free < s.c.min_free_margin:
+            return False, f"FREE MARGIN ${free:.2f} < MIN ${s.c.min_free_margin:.2f}"
+
+        # 2. Safety buffer over needed margin
+        req_with_buf = needed * (1.0 + s.c.margin_buffer_pct / 100.0)
+        if free < req_with_buf:
+            return False, f"FREE MARGIN ${free:.2f} < REQUIRED ${req_with_buf:.2f} (needed ${needed:.2f} + {s.c.margin_buffer_pct:.0f}% buffer)"
+
+        # 3. Account margin level check
+        if acc.margin > 0 and acc.margin_level > 0 and s.c.min_margin_level > 0:
+            if acc.margin_level < s.c.min_margin_level:
+                return False, f"MARGIN LEVEL {acc.margin_level:.1f}% < MIN {s.c.min_margin_level:.0f}%"
+
+        return True, "OK"
+
     def order(s, d):
+        ok_m, reason = s.check_margin(d)
+        if not ok_m:
+            return False, f"MARGIN_REJECT: {reason}"
+
         m = s.mt5; t = s.mt5.symbol_info_tick(s.c.symbol)
         if t is None or t.ask <= 0 or t.bid <= 0:
             return False, "NO_TICK"
@@ -446,7 +505,7 @@ def run(cfg, allow_real):
 # ============================== SELF-TEST (simulated broker, no MT5) ==============================
 class FakeBroker:
     """Gold at $1 P&L per $1 move per 0.01 lot. Price/MA/clock are set by the test."""
-    def __init__(s): s.bid = 4000.0; s.spread = 0.3; s.t = 1_000_000; s.ma_v = 3990.0; s.pos = []; s.n = 0; s.fail = False; s.atr_v = 0.5; s.sleeps = 0; s.dp = 0.0; s.ma_ago_v = 3980.0; s.rsi_v = 50.0
+    def __init__(s): s.bid = 4000.0; s.spread = 0.3; s.t = 1_000_000; s.ma_v = 3990.0; s.pos = []; s.n = 0; s.fail = False; s.atr_v = 0.5; s.sleeps = 0; s.dp = 0.0; s.ma_ago_v = 3980.0; s.rsi_v = 50.0; s.margin_fail = False
     def tick(s): return Tick(s.bid, s.bid + s.spread, s.t, s.t * 1000)
     def ma(s): return s.ma_v
     def ma_ago(s, k): return s.ma_ago_v
@@ -456,7 +515,13 @@ class FakeBroker:
     def equity_margin(s): return 1000.0, 10.0
     def sleep(s, x): s.sleeps += 1
     def daily_profit(s): return s.dp, 0
+    def check_margin(s, d, lots=None):
+        if getattr(s, "margin_fail", False):
+            return False, "FREE MARGIN $5.00 < MIN $10.00"
+        return True, "OK"
     def order(s, d):
+        ok_m, reason = s.check_margin(d)
+        if not ok_m: return False, f"MARGIN_REJECT: {reason}"
         if s.fail: return False, 10027
         s.n += 1; s.pos.append(dict(ticket=s.n, dir=d, entry=(s.bid + s.spread) if d > 0 else s.bid, time=s.t)); return True, 10009
     def close(s, p): s.pos = [q for q in s.pos if q["ticket"] != p.ticket]
@@ -576,6 +641,10 @@ def selftest():
     # 8e. Break Time filter: finish active trades but block new entries
     cfg, b, bot = mk(break_time=True); step(b, bot)
     check("break_time blocks new entry when flat", not b.pos and "BREAK TIME" in bot.status)
+
+    # 8f. Margin Pre-check: blocks order and enforces 60s cooldown if free margin is insufficient
+    cfg, b, bot = mk(); b.margin_fail = True; step(b, bot)
+    check("margin pre-check blocks order and enforces margin cooldown", not b.pos and "MARGIN" in bot.status and bot.margin_cooldown_until > b.t)
 
     # 9. CSV logger writes a header + rows
     d = tempfile.mkdtemp(); global HERE
