@@ -76,3 +76,4 @@ MT5_PASSWORD=your_password
 MT5_SERVER=VantageFX-Live
 ```
 *(Credentials in `.env` are strictly git-ignored).*
+

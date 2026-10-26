@@ -384,6 +384,8 @@ class BotManager:
                 "tp_price": round(self.bot.tp_price, 2),
                 "ma": round(self.bot.ma, 2),
                 "exposure": round(self.bot.exposure, 1),
+                "dist_ma": round(getattr(self.bot, "dist_ma", 0.0), 2),
+                "rsi": round(getattr(self.bot, "rsi", 50.0), 1),
             }
         else:
             bot_data = {
@@ -397,6 +399,8 @@ class BotManager:
                 "tp_price": 0.0,
                 "ma": 0.0,
                 "exposure": 0.0,
+                "dist_ma": 0.0,
+                "rsi": 50.0,
             }
 
         cfg_dict = {f.name: getattr(self.cfg, f.name) for f in dataclasses.fields(Cfg)}
@@ -504,7 +508,7 @@ async def websocket_endpoint(ws: WebSocket):
             state = manager.snapshot()
             await ws.send_text(json.dumps(state))
             await asyncio.sleep(0.2)
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, RuntimeError):
         pass
     except Exception as e:
         logger.error(f"WebSocket error: {e}")

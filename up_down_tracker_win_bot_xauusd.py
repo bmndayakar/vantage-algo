@@ -61,6 +61,11 @@ class Cfg:
     flip_on_reversal: bool = False
     side: str = "both"                   # both | buy | sell : only open baskets in this direction
     slope_bars: int = 0                  # >0: also require the MA to slope that way vs N bars ago (falling MA -> sells only)
+    max_ma_dist: float = 0.0             # >0: max allowable distance from MA (e.g. 2.50 on Gold); blocks buying at the top of a spike
+    rsi_filter: bool = False             # True: block BUY when RSI > rsi_ob, block SELL when RSI < rsi_os
+    rsi_period: int = 14                 # RSI calculation period
+    rsi_ob: float = 70.0                 # RSI overbought threshold
+    rsi_os: float = 30.0                 # RSI oversold threshold
     enable_log: bool = True
     log_file: str = "up_down_tracker_decisions_py.csv"   # separate from the EA's CSV
 
@@ -72,6 +77,7 @@ class Bot:
         s.status = "Initializing..."; s.basket = 0.0; s.last_exit = 0; s.open_time = 0; s.ma = 0.0
         s.daily = 0.0; s.deals = 0; s.nopen = 0; s.tp_price = 0.0; s.dir = 0
         s.peak = 0.0; s.trail_stop = 0.0; s.flip = 0; s.exposure = 0.0
+        s.dist_ma = 0.0; s.rsi = 50.0
         s.events = []
 
     # ---- CSV decision log ----
@@ -113,6 +119,9 @@ class Bot:
             return
         m = s.br.ma()
         if m: s.ma = m
+        if hasattr(s.br, "rsi"):
+            rv = s.br.rsi(c.rsi_period)
+            if rv is not None: s.rsi = rv
         eq, mg = s.br.equity_margin(); s.exposure = (mg / eq * 100.0) if eq > 0 else 0.0
 
         # 1. SCAN POSITIONS (EA iterates newest -> oldest; buyP/sellP keep the last leg seen)
@@ -212,6 +221,24 @@ class Bot:
                 if bid > s.ma: d = 1
                 elif bid < s.ma: d = -1
                 else: return
+
+                dist = abs(bid - s.ma)
+                s.dist_ma = dist
+
+                # 1. Overextension Guard: do not buy/sell if price is stretched too far from MA
+                if c.max_ma_dist > 0 and dist > c.max_ma_dist:
+                    s.status = f"OVEREXTENDED {dist:.2f} > {c.max_ma_dist:.2f}"
+                    return
+
+                # 2. RSI Overbought/Oversold Guard: do not buy overbought climax or sell oversold floor
+                if c.rsi_filter:
+                    if d > 0 and s.rsi >= c.rsi_ob:
+                        s.status = f"RSI OVERBOUGHT ({s.rsi:.1f} >= {c.rsi_ob:.0f})"
+                        return
+                    if d < 0 and s.rsi <= c.rsi_os:
+                        s.status = f"RSI OVERSOLD ({s.rsi:.1f} <= {c.rsi_os:.0f})"
+                        return
+
                 if not s.allowed(d): s.status = f"WAIT {c.side.upper()}" + (f"/SLOPE{c.slope_bars}" if c.slope_bars else ""); return
                 if c.slope_bars > 0:
                     ago = s.br.ma_ago(c.slope_bars)
@@ -329,6 +356,18 @@ class MT5Broker:
         np = s.np; pc = r["close"][:-1]; h, l = r["high"][1:], r["low"][1:]
         return float(np.mean(np.maximum(h - l, np.maximum(abs(h - pc), abs(l - pc)))))
 
+    def rsi(s, period=14):
+        r = s.mt5.copy_rates_from_pos(s.c.symbol, s.tf, 1, period + 2)   # closed bars
+        if r is None or len(r) < period + 1: return 50.0
+        diffs = s.np.diff(r["close"])
+        gains = s.np.where(diffs > 0, diffs, 0.0)
+        losses = s.np.where(diffs < 0, -diffs, 0.0)
+        avg_g = float(s.np.mean(gains[-period:]))
+        avg_l = float(s.np.mean(losses[-period:]))
+        if avg_l == 0: return 100.0 if avg_g > 0 else 50.0
+        rs = avg_g / avg_l
+        return float(100.0 - (100.0 / (1.0 + rs)))
+
     def tick_value_size(s):
         i = s.mt5.symbol_info(s.c.symbol)
         if i is None: return 1.0, 0.01
@@ -405,11 +444,12 @@ def run(cfg, allow_real):
 # ============================== SELF-TEST (simulated broker, no MT5) ==============================
 class FakeBroker:
     """Gold at $1 P&L per $1 move per 0.01 lot. Price/MA/clock are set by the test."""
-    def __init__(s): s.bid = 4000.0; s.spread = 0.3; s.t = 1_000_000; s.ma_v = 3990.0; s.pos = []; s.n = 0; s.fail = False; s.atr_v = 0.5; s.sleeps = 0; s.dp = 0.0; s.ma_ago_v = 3980.0
+    def __init__(s): s.bid = 4000.0; s.spread = 0.3; s.t = 1_000_000; s.ma_v = 3990.0; s.pos = []; s.n = 0; s.fail = False; s.atr_v = 0.5; s.sleeps = 0; s.dp = 0.0; s.ma_ago_v = 3980.0; s.rsi_v = 50.0
     def tick(s): return Tick(s.bid, s.bid + s.spread, s.t, s.t * 1000)
     def ma(s): return s.ma_v
     def ma_ago(s, k): return s.ma_ago_v
     def atr(s): return s.atr_v
+    def rsi(s, period=14): return s.rsi_v
     def tick_value_size(s): return 1.0, 0.01
     def equity_margin(s): return 1000.0, 10.0
     def sleep(s, x): s.sleeps += 1
@@ -524,6 +564,12 @@ def selftest():
     check("slope filter blocks buy on a falling MA", not b.pos and bot.status.startswith("WAIT SLOPE"))
     b.ma_ago_v = 3985.0; step(b, bot)
     check("slope filter allows buy on a rising MA", len(b.pos) == 1 and b.pos[0]["dir"] == 1)
+
+    # 8d. Overextension & RSI filters
+    cfg, b, bot = mk(max_ma_dist=5.0); step(b, bot) # bid 4000 vs MA 3990 = 10 > 5 -> overextended
+    check("max_ma_dist blocks buy when overextended", not b.pos and bot.status.startswith("OVEREXTENDED"))
+    cfg, b, bot = mk(rsi_filter=True); b.rsi_v = 75.0; step(b, bot)
+    check("rsi_filter blocks buy when overbought", not b.pos and bot.status.startswith("RSI OVERBOUGHT"))
 
     # 9. CSV logger writes a header + rows
     d = tempfile.mkdtemp(); global HERE

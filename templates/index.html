@@ -158,8 +158,8 @@
           <span>Spread: <span id="txt-spread" class="font-mono text-amber-600 dark:text-amber-400 font-semibold">0.00</span></span>
         </div>
         <div class="text-[11px] text-slate-400 dark:text-slate-500 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-between">
-          <span>MA-250:</span>
-          <span id="txt-ma" class="font-mono text-slate-700 dark:text-slate-300">---</span>
+          <span>MA: <span id="txt-ma" class="font-mono text-slate-700 dark:text-slate-300">---</span></span>
+          <span>RSI: <span id="txt-rsi" class="font-mono text-slate-700 dark:text-slate-300">50</span></span>
         </div>
       </div>
 
@@ -363,9 +363,24 @@
           <input type="number" step="1.0" id="cfg-grid_sl" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
         </div>
 
-        <div class="col-span-2">
+        <div>
           <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Max Spread Guard ($)</label>
           <input type="number" step="0.1" id="cfg-max_spread" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="e.g. 1.0 (0=Off)">
+        </div>
+        <div>
+          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Min Cooldown Gap (Sec)</label>
+          <input type="number" step="1" id="cfg-min_entry_gap_sec" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="default 15">
+        </div>
+
+        <div>
+          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Max MA Distance Guard ($)</label>
+          <input type="number" step="0.5" id="cfg-max_ma_dist" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="e.g. 2.50 (0=Off)">
+        </div>
+        <div class="flex items-center pt-5">
+          <label class="flex items-center space-x-2 cursor-pointer select-none">
+            <input type="checkbox" id="cfg-rsi_filter" class="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700">
+            <span class="text-slate-700 dark:text-slate-300 font-medium">RSI Climax Guard (Block Buy &gt; 70, Sell &lt; 30)</span>
+          </label>
         </div>
 
         <div class="col-span-2 pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end space-x-3">
@@ -639,6 +654,17 @@
         const b = s.bot;
         document.getElementById('txt-bot-status').innerText = b.status || (isRunning ? 'RUNNING' : 'IDLE');
         document.getElementById('txt-ma').innerText = b.ma > 0 ? b.ma.toFixed(2) : '---';
+        const rsiEl = document.getElementById('txt-rsi');
+        if (rsiEl && b.rsi !== undefined) {
+          rsiEl.innerText = b.rsi.toFixed(1);
+          if (b.rsi >= 70) {
+            rsiEl.className = 'font-mono text-rose-500 font-bold';
+          } else if (b.rsi <= 30) {
+            rsiEl.className = 'font-mono text-emerald-500 font-bold';
+          } else {
+            rsiEl.className = 'font-mono text-slate-700 dark:text-slate-300';
+          }
+        }
 
         // Trend Bias
         const trendEl = document.getElementById('badge-trend');
@@ -786,7 +812,13 @@
       if (s.config && !document.getElementById('cfg-lots').value) {
         for (let k in s.config) {
           const el = document.getElementById('cfg-' + k);
-          if (el) el.value = s.config[k];
+          if (el) {
+            if (el.type === 'checkbox') {
+              el.checked = Boolean(s.config[k]);
+            } else {
+              el.value = s.config[k];
+            }
+          }
         }
       }
     }
@@ -920,7 +952,10 @@
         trail_give_frac: parseFloat(document.getElementById('cfg-trail_give_frac').value),
         soft_cap_min: parseInt(document.getElementById('cfg-soft_cap_min').value),
         grid_sl: parseFloat(document.getElementById('cfg-grid_sl').value),
-        max_spread: parseFloat(document.getElementById('cfg-max_spread').value) || 0.0
+        max_spread: parseFloat(document.getElementById('cfg-max_spread').value) || 0.0,
+        max_ma_dist: parseFloat(document.getElementById('cfg-max_ma_dist').value) || 0.0,
+        min_entry_gap_sec: parseInt(document.getElementById('cfg-min_entry_gap_sec').value) || 15,
+        rsi_filter: document.getElementById('cfg-rsi_filter').checked
       };
       const res = await fetch('/api/config', {
         method: 'POST',
