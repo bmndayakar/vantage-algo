@@ -36,6 +36,26 @@ logger = logging.getLogger("web_bot")
 app = FastAPI(title="Vantage XAUUSD Bot Dashboard")
 
 
+def format_local_tz(epoch_seconds: int) -> str:
+    if not epoch_seconds or epoch_seconds <= 0:
+        return "---"
+    t = dt.datetime.fromtimestamp(epoch_seconds).astimezone()
+    tz = t.strftime("%z")
+    tz_fmt = f"{tz[:3]}:{tz[3:]}" if len(tz) >= 5 else tz
+    return t.strftime("%H:%M:%S") + f" ({tz_fmt})"
+
+
+def format_duration(sec: int) -> str:
+    sec = max(0, int(sec))
+    m, s = divmod(sec, 60)
+    h, m = divmod(m, 60)
+    if h > 0:
+        return f"{h}h {m}m"
+    if m > 0:
+        return f"{m}m {s}s"
+    return f"{s}s"
+
+
 class BotManager:
     def __init__(self):
         self.lock = threading.Lock()
@@ -145,8 +165,11 @@ class BotManager:
             magics = {self.cfg.magic, self.cfg.magic_recovery}
             raw_pos = mt5.positions_get(symbol=sym) or ()
             pos_data = []
+            now_ts = int(time.time())
             for p in raw_pos:
                 is_bot = p.magic in magics
+                open_ts = int(p.time)
+                age_sec = max(0, now_ts - open_ts) if open_ts > 0 else 0
                 pos_data.append({
                     "ticket": p.ticket,
                     "type": "BUY" if p.type == mt5.POSITION_TYPE_BUY else "SELL",
@@ -155,7 +178,9 @@ class BotManager:
                     "price_current": float(p.price_current),
                     "profit": round(float(p.profit), 2),
                     "swap": round(float(p.swap), 2),
-                    "time": dt.datetime.fromtimestamp(p.time, dt.timezone.utc).strftime("%H:%M:%S"),
+                    "time": format_local_tz(open_ts),
+                    "time_open": format_local_tz(open_ts),
+                    "duration": format_duration(age_sec),
                     "magic": p.magic,
                     "is_bot": is_bot,
                     "origin": "B" if is_bot else "U",
@@ -174,6 +199,9 @@ class BotManager:
                 pos_type = "BUY" if in_d and in_d.type == 0 else ("SELL" if in_d and in_d.type == 1 else ("BUY" if out.type == 1 else "SELL"))
                 open_p = float(in_d.price) if in_d else 0.0
                 is_b = bool(out.magic in magics or out.magic > 0)
+                in_time = int(in_d.time) if in_d else 0
+                out_time = int(out.time)
+                duration_sec = max(0, out_time - in_time) if in_time > 0 else 0
                 closed_data.append({
                     "ticket": out.position_id,
                     "type": pos_type,
@@ -181,7 +209,10 @@ class BotManager:
                     "price_open": open_p,
                     "price_close": float(out.price),
                     "profit": round(float(out.profit + out.swap + out.commission), 2),
-                    "time": dt.datetime.fromtimestamp(out.time).strftime("%H:%M:%S"),
+                    "time_open": format_local_tz(in_time),
+                    "time_close": format_local_tz(out_time),
+                    "time": format_local_tz(out_time),
+                    "duration": format_duration(duration_sec),
                     "magic": out.magic,
                     "is_bot": is_b,
                     "origin": "B" if is_b else "U",
