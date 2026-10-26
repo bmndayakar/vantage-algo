@@ -261,3 +261,4 @@ Tracks cumulative floating basket P&L ($V_{\text{basket}}$):
    * Never trade `Both` during strong macroeconomic news releases.
 3. **Nighttime & Inactivity**:
    * Check **`☕ Break Time`** 30 minutes before leaving your desk. Allow active trades to finish and close in profit, and let the bot rest.
+
