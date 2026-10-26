@@ -249,6 +249,18 @@ Tracks cumulative floating basket P&L ($V_{\text{basket}}$):
 * **`Open` Tab**: Shows currently running positions with real-time floating P&L, lot size, entry price, and **`B`** (Bot) vs **`U`** (User manual) badges.
 * **`Closed` Tab**: Displays the session's audit log of closed trades with entry price, exit price, timestamp, and net realized P&L.
 
+### 5.4 Real-Time Entry Telemetry & MA Radar
+To eliminate any ambiguity on why the bot is waiting, the dashboard computes and streams live entry readiness telemetry 5 times per second:
+* **Current MA**: Continuous SMA of closing prices on the configured timeframe (default: M1 250). Evaluated even when the bot is stopped.
+* **MA Distance**: Current price stretch from the MA:
+  $$\text{Dist}_{\text{MA}} = |P_{\text{bid}} - \text{MA}|$$
+* **Max Allowed Distance**: The active `max_ma_dist` threshold setting (e.g., \$2.50 or \$1.00). If disabled, displays `Unlimited`.
+* **Waiting For Price / Target Entry Condition**:
+  * If $\text{Dist}_{\text{MA}} > \text{Max MA Dist}$ (Overextended): Calculates the exact price price must reach and how much it needs to pull back (e.g. `BUY: <= 2732.50 (Drop -$2.15)` or `SELL: >= 2727.50 (Rise +$2.15)`).
+  * If Price is on the wrong side of the MA: Displays the cross condition (e.g. `> 2730.00 (Rise +$1.80)`).
+  * If Price is within the allowable window: Displays `In Zone (Ready)` in vibrant emerald green.
+* **Radar Banner**: Centered between the metric cards and chart, featuring an animated radar status beacon and status headlines (e.g., `Price in Entry Zone — Engine armed`, `Overextended — Waiting for pullback`, `Active Position Open`, or `☕ Break Time Active`).
+
 ---
 
 ## 6. Safe Operational Playbook (Capital Preservation Rules)

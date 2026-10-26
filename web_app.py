@@ -56,6 +56,207 @@ def format_duration(sec: int) -> str:
     return f"{s}s"
 
 
+def compute_entry_telemetry(bid: float, ma: float, max_dist: float, side: str) -> Dict[str, Any]:
+    max_dist = float(max_dist or 0.0)
+    side = (side or "both").lower()
+
+    if ma <= 0 or bid <= 0:
+        return {
+            "current_ma": round(ma, 2),
+            "dist_ma": 0.0,
+            "max_ma_dist": round(max_dist, 2),
+            "target_entry_price": 0.0,
+            "target_entry_desc": "Calculating MA...",
+            "in_entry_zone": False,
+            "action_side": "NONE",
+        }
+
+    dist = abs(bid - ma)
+
+    if max_dist > 0:
+        if side == "buy":
+            upper_limit = ma + max_dist
+            if bid > upper_limit:
+                diff = bid - upper_limit
+                return {
+                    "current_ma": round(ma, 2),
+                    "dist_ma": round(dist, 2),
+                    "max_ma_dist": round(max_dist, 2),
+                    "target_entry_price": round(upper_limit, 2),
+                    "target_entry_desc": f"<= {upper_limit:.2f} (Drop -${diff:.2f})",
+                    "in_entry_zone": False,
+                    "action_side": "BUY",
+                }
+            elif bid < ma:
+                diff = ma - bid
+                return {
+                    "current_ma": round(ma, 2),
+                    "dist_ma": round(dist, 2),
+                    "max_ma_dist": round(max_dist, 2),
+                    "target_entry_price": round(ma, 2),
+                    "target_entry_desc": f"> {ma:.2f} (Rise +${diff:.2f})",
+                    "in_entry_zone": False,
+                    "action_side": "BUY",
+                }
+            else:
+                return {
+                    "current_ma": round(ma, 2),
+                    "dist_ma": round(dist, 2),
+                    "max_ma_dist": round(max_dist, 2),
+                    "target_entry_price": round(upper_limit, 2),
+                    "target_entry_desc": f"In Zone (<= {upper_limit:.2f}) - Ready",
+                    "in_entry_zone": True,
+                    "action_side": "BUY",
+                }
+        elif side == "sell":
+            lower_limit = ma - max_dist
+            if bid < lower_limit:
+                diff = lower_limit - bid
+                return {
+                    "current_ma": round(ma, 2),
+                    "dist_ma": round(dist, 2),
+                    "max_ma_dist": round(max_dist, 2),
+                    "target_entry_price": round(lower_limit, 2),
+                    "target_entry_desc": f">= {lower_limit:.2f} (Rise +${diff:.2f})",
+                    "in_entry_zone": False,
+                    "action_side": "SELL",
+                }
+            elif bid > ma:
+                diff = bid - ma
+                return {
+                    "current_ma": round(ma, 2),
+                    "dist_ma": round(dist, 2),
+                    "max_ma_dist": round(max_dist, 2),
+                    "target_entry_price": round(ma, 2),
+                    "target_entry_desc": f"< {ma:.2f} (Drop -${diff:.2f})",
+                    "in_entry_zone": False,
+                    "action_side": "SELL",
+                }
+            else:
+                return {
+                    "current_ma": round(ma, 2),
+                    "dist_ma": round(dist, 2),
+                    "max_ma_dist": round(max_dist, 2),
+                    "target_entry_price": round(lower_limit, 2),
+                    "target_entry_desc": f"In Zone (>= {lower_limit:.2f}) - Ready",
+                    "in_entry_zone": True,
+                    "action_side": "SELL",
+                }
+        else:  # both
+            if bid > ma:
+                upper_limit = ma + max_dist
+                if bid > upper_limit:
+                    diff = bid - upper_limit
+                    return {
+                        "current_ma": round(ma, 2),
+                        "dist_ma": round(dist, 2),
+                        "max_ma_dist": round(max_dist, 2),
+                        "target_entry_price": round(upper_limit, 2),
+                        "target_entry_desc": f"BUY: <= {upper_limit:.2f} (Drop -${diff:.2f})",
+                        "in_entry_zone": False,
+                        "action_side": "BUY",
+                    }
+                else:
+                    return {
+                        "current_ma": round(ma, 2),
+                        "dist_ma": round(dist, 2),
+                        "max_ma_dist": round(max_dist, 2),
+                        "target_entry_price": round(upper_limit, 2),
+                        "target_entry_desc": f"In BUY Zone (<= {upper_limit:.2f}) - Ready",
+                        "in_entry_zone": True,
+                        "action_side": "BUY",
+                    }
+            elif bid < ma:
+                lower_limit = ma - max_dist
+                if bid < lower_limit:
+                    diff = lower_limit - bid
+                    return {
+                        "current_ma": round(ma, 2),
+                        "dist_ma": round(dist, 2),
+                        "max_ma_dist": round(max_dist, 2),
+                        "target_entry_price": round(lower_limit, 2),
+                        "target_entry_desc": f"SELL: >= {lower_limit:.2f} (Rise +${diff:.2f})",
+                        "in_entry_zone": False,
+                        "action_side": "SELL",
+                    }
+                else:
+                    return {
+                        "current_ma": round(ma, 2),
+                        "dist_ma": round(dist, 2),
+                        "max_ma_dist": round(max_dist, 2),
+                        "target_entry_price": round(lower_limit, 2),
+                        "target_entry_desc": f"In SELL Zone (>= {lower_limit:.2f}) - Ready",
+                        "in_entry_zone": True,
+                        "action_side": "SELL",
+                    }
+            else:
+                return {
+                    "current_ma": round(ma, 2),
+                    "dist_ma": 0.0,
+                    "max_ma_dist": round(max_dist, 2),
+                    "target_entry_price": round(ma, 2),
+                    "target_entry_desc": f"At MA ({ma:.2f}) - Ready",
+                    "in_entry_zone": True,
+                    "action_side": "BOTH",
+                }
+    else:  # max_dist == 0
+        if side == "buy":
+            if bid > ma:
+                return {
+                    "current_ma": round(ma, 2),
+                    "dist_ma": round(dist, 2),
+                    "max_ma_dist": 0.0,
+                    "target_entry_price": round(ma, 2),
+                    "target_entry_desc": f"In BUY Zone (> {ma:.2f}) - Ready",
+                    "in_entry_zone": True,
+                    "action_side": "BUY",
+                }
+            else:
+                diff = ma - bid
+                return {
+                    "current_ma": round(ma, 2),
+                    "dist_ma": round(dist, 2),
+                    "max_ma_dist": 0.0,
+                    "target_entry_price": round(ma, 2),
+                    "target_entry_desc": f"> {ma:.2f} (Rise +${diff:.2f})",
+                    "in_entry_zone": False,
+                    "action_side": "BUY",
+                }
+        elif side == "sell":
+            if bid < ma:
+                return {
+                    "current_ma": round(ma, 2),
+                    "dist_ma": round(dist, 2),
+                    "max_ma_dist": 0.0,
+                    "target_entry_price": round(ma, 2),
+                    "target_entry_desc": f"In SELL Zone (< {ma:.2f}) - Ready",
+                    "in_entry_zone": True,
+                    "action_side": "SELL",
+                }
+            else:
+                diff = bid - ma
+                return {
+                    "current_ma": round(ma, 2),
+                    "dist_ma": round(dist, 2),
+                    "max_ma_dist": 0.0,
+                    "target_entry_price": round(ma, 2),
+                    "target_entry_desc": f"< {ma:.2f} (Drop -${diff:.2f})",
+                    "in_entry_zone": False,
+                    "action_side": "SELL",
+                }
+        else:
+            sig = "BUY" if bid > ma else ("SELL" if bid < ma else "MA")
+            return {
+                "current_ma": round(ma, 2),
+                "dist_ma": round(dist, 2),
+                "max_ma_dist": 0.0,
+                "target_entry_price": round(ma, 2),
+                "target_entry_desc": f"Signal Ready ({sig})",
+                "in_entry_zone": True,
+                "action_side": sig,
+            }
+
+
 class BotManager:
     def __init__(self):
         self.lock = threading.Lock()
@@ -78,6 +279,8 @@ class BotManager:
         self.last_tick_msc: int = -1
         self.last_tick_arrival: float = 0.0
         self.is_market_live: bool = False
+        self.live_ma: float = 0.0
+        self.live_rsi: float = 50.0
 
     def get_mt5_account_and_market(self):
         """Poll MT5 for account info, market tick, and positions without trading."""
@@ -147,6 +350,34 @@ class BotManager:
                         "is_live": False,
                         "tick_age_sec": 999999,
                     }
+
+            # Sync or calculate live MA and RSI
+            if self.bot and getattr(self.bot, "ma", 0.0) > 0:
+                self.live_ma = float(self.bot.ma)
+                self.live_rsi = float(getattr(self.bot, "rsi", 50.0))
+            else:
+                try:
+                    tf_attr = "TIMEFRAME_" + self.cfg.tf.upper()
+                    tf_val = getattr(mt5, tf_attr, mt5.TIMEFRAME_M1)
+                    r = mt5.copy_rates_from_pos(sym, tf_val, 0, self.cfg.ma_period)
+                    if r is not None and len(r) >= self.cfg.ma_period:
+                        self.live_ma = float(sum(r["close"]) / len(r["close"]))
+
+                    period = self.cfg.rsi_period
+                    rr = mt5.copy_rates_from_pos(sym, tf_val, 1, period + 2)
+                    if rr is not None and len(rr) >= period + 1:
+                        diffs = [float(rr["close"][i] - rr["close"][i - 1]) for i in range(1, len(rr))]
+                        gains = [d for d in diffs[-period:] if d > 0]
+                        losses = [-d for d in diffs[-period:] if d < 0]
+                        avg_g = sum(gains) / period if gains else 0.0
+                        avg_l = sum(losses) / period if losses else 0.0
+                        if avg_l == 0:
+                            self.live_rsi = 100.0 if avg_g > 0 else 50.0
+                        else:
+                            rs = avg_g / avg_l
+                            self.live_rsi = float(100.0 - (100.0 / (1.0 + rs)))
+                except Exception:
+                    pass
 
             # Fetch broker trading symbols list once or when empty
             if not self.available_symbols:
@@ -432,6 +663,17 @@ class BotManager:
             time.sleep(0.01)
 
     def snapshot(self) -> Dict[str, Any]:
+        bid_val = float(self.last_tick.get("bid", 0.0)) if self.last_tick else 0.0
+        ma_val = float(self.bot.ma) if (self.bot and self.bot.ma > 0) else float(self.live_ma)
+        rsi_val = float(self.bot.rsi) if (self.bot and self.bot.ma > 0) else float(self.live_rsi)
+
+        telemetry = compute_entry_telemetry(
+            bid=bid_val,
+            ma=ma_val,
+            max_dist=self.cfg.max_ma_dist,
+            side=self.cfg.side,
+        )
+
         bot_data = {}
         if self.bot:
             bot_data = {
@@ -443,10 +685,14 @@ class BotManager:
                 "deals": self.bot.deals,
                 "nopen": self.bot.nopen,
                 "tp_price": round(self.bot.tp_price, 2),
-                "ma": round(self.bot.ma, 2),
+                "ma": round(ma_val, 2),
                 "exposure": round(self.bot.exposure, 1),
-                "dist_ma": round(getattr(self.bot, "dist_ma", 0.0), 2),
-                "rsi": round(getattr(self.bot, "rsi", 50.0), 1),
+                "dist_ma": telemetry["dist_ma"],
+                "rsi": round(rsi_val, 1),
+                "max_ma_dist": telemetry["max_ma_dist"],
+                "target_entry_price": telemetry["target_entry_price"],
+                "target_entry_desc": telemetry["target_entry_desc"],
+                "in_entry_zone": telemetry["in_entry_zone"],
             }
         else:
             bot_data = {
@@ -458,10 +704,14 @@ class BotManager:
                 "deals": 0,
                 "nopen": len([p for p in self.positions_list if p.get("is_bot")]),
                 "tp_price": 0.0,
-                "ma": 0.0,
+                "ma": round(ma_val, 2),
                 "exposure": 0.0,
-                "dist_ma": 0.0,
-                "rsi": 50.0,
+                "dist_ma": telemetry["dist_ma"],
+                "rsi": round(rsi_val, 1),
+                "max_ma_dist": telemetry["max_ma_dist"],
+                "target_entry_price": telemetry["target_entry_price"],
+                "target_entry_desc": telemetry["target_entry_desc"],
+                "in_entry_zone": telemetry["in_entry_zone"],
             }
 
         cfg_dict = {f.name: getattr(self.cfg, f.name) for f in dataclasses.fields(Cfg)}
@@ -477,6 +727,7 @@ class BotManager:
             "account": self.account_info,
             "market": self.last_tick,
             "bot": bot_data,
+            "telemetry": telemetry,
             "positions": self.positions_list,
             "closed_positions": self.closed_positions_list,
             "events": list(self.events),

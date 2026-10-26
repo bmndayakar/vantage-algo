@@ -138,6 +138,10 @@ The following real-time failures occurred during live testing and trading sessio
 ### 2. Live Web Dashboard (`web_app.py` & `templates/index.html`)
 * **Light / Dark Theme**: Persistent financial light mode by default with dark mode toggle.
 * **Top Control Bar**: Start/Stop button, "Allow Real" safety interlock, "☕ Break Time" toggle button, "⚠️ Close All" panic button, and Settings modal.
+* **Real-Time Entry Telemetry & MA Radar**:
+  * Calculates live MA, current distance from MA (`|Bid - MA|`), and user-configured `Max MA Dist`.
+  * Computes exact target entry price and condition (e.g. `BUY: <= 2732.50 (Drop -$2.50)` or `In Zone - Ready`) in real time, active continuously even when bot is stopped.
+  * Radar banner with pulsing status dot, mode badge (`BOTH`, `BUY`, `SELL`), and descriptive engine state headlines.
 * **Live Telemetry (5 Hz via WebSockets)**: Bid/Ask with flash animations, Spread, MA-250, RSI-14, Basket P&L, Daily Goal Meter.
 * **Account Info**: Equity, Balance, Free Margin, and Margin Level % in real time.
 * **Dual Positions Tabs**:

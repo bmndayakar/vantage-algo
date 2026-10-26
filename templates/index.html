@@ -170,6 +170,14 @@
           <span>MA: <span id="txt-ma" class="font-mono text-slate-700 dark:text-slate-300">---</span></span>
           <span>RSI: <span id="txt-rsi" class="font-mono text-slate-700 dark:text-slate-300">50</span></span>
         </div>
+        <div class="text-[11px] text-slate-400 dark:text-slate-500 mt-1 flex justify-between">
+          <span>MA Dist: <span id="txt-ma-dist" class="font-mono text-slate-700 dark:text-slate-300">---</span></span>
+          <span>Max: <span id="txt-ma-max-dist" class="font-mono text-amber-600 dark:text-amber-400 font-semibold">---</span></span>
+        </div>
+        <div class="text-[11px] text-slate-400 dark:text-slate-500 mt-1 flex justify-between items-center">
+          <span>Waiting:</span>
+          <span id="txt-entry-target" class="font-mono font-bold text-emerald-600 dark:text-emerald-400 truncate max-w-[130px]" title="">---</span>
+        </div>
       </div>
 
       <!-- CARD 2: BASKET FLOATING P&L -->
@@ -243,6 +251,45 @@
         </div>
       </div>
 
+    </div>
+
+    <!-- REAL-TIME ENTRY TELEMETRY & MA RADAR -->
+    <div id="panel-entry-radar" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-5 py-3.5 shadow-sm transition-all duration-200">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <!-- Left: Status & Icon -->
+        <div class="flex items-center space-x-3 min-w-0">
+          <span id="dot-entry-radar" class="w-3 h-3 rounded-full bg-slate-400 flex-shrink-0"></span>
+          <div class="min-w-0">
+            <div class="flex items-center space-x-2">
+              <span class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">Entry Radar</span>
+              <span id="badge-entry-mode" class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">BOTH</span>
+            </div>
+            <div id="txt-entry-headline" class="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">
+              Calculating entry conditions...
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Telemetry Metrics -->
+        <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
+          <div class="flex items-center space-x-1.5">
+            <span class="text-slate-400 dark:text-slate-500">Current MA:</span>
+            <span id="radar-ma" class="font-mono font-bold text-slate-800 dark:text-slate-200">---</span>
+          </div>
+          <div class="flex items-center space-x-1.5">
+            <span class="text-slate-400 dark:text-slate-500">Distance:</span>
+            <span id="radar-dist" class="font-mono font-bold text-slate-800 dark:text-slate-200">---</span>
+          </div>
+          <div class="flex items-center space-x-1.5">
+            <span class="text-slate-400 dark:text-slate-500">Max MA Dist:</span>
+            <span id="radar-max-dist" class="font-mono font-bold text-amber-600 dark:text-amber-400">---</span>
+          </div>
+          <div class="flex items-center space-x-1.5 bg-slate-50 dark:bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700">
+            <span class="text-slate-500 dark:text-slate-400 font-medium">Waiting For Price:</span>
+            <span id="radar-waiting-for" class="font-mono font-extrabold text-emerald-600 dark:text-emerald-400">---</span>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- ROW 2: CHART & OPEN POSITIONS -->
@@ -742,11 +789,99 @@
         document.getElementById('txt-spread').innerText = `$${s.market.spread.toFixed(2)}`;
       }
 
+      // Telemetry & Entry Radar
+      const telem = s.telemetry || (s.bot ? {
+        current_ma: s.bot.ma,
+        dist_ma: s.bot.dist_ma,
+        max_ma_dist: s.bot.max_ma_dist,
+        target_entry_price: s.bot.target_entry_price,
+        target_entry_desc: s.bot.target_entry_desc,
+        in_entry_zone: s.bot.in_entry_zone,
+      } : null);
+
+      if (telem) {
+        const maVal = telem.current_ma > 0 ? telem.current_ma.toFixed(2) : '---';
+        const distVal = telem.current_ma > 0 ? `$${telem.dist_ma.toFixed(2)}` : '---';
+        const maxDistVal = telem.max_ma_dist > 0 ? `$${telem.max_ma_dist.toFixed(2)}` : 'Unlimited';
+        const waitingVal = telem.target_entry_desc || '---';
+
+        // Update Card 1
+        const txtMaDist = document.getElementById('txt-ma-dist');
+        if (txtMaDist) txtMaDist.innerText = distVal;
+        const txtMaMax = document.getElementById('txt-ma-max-dist');
+        if (txtMaMax) txtMaMax.innerText = maxDistVal;
+        const txtTarget = document.getElementById('txt-entry-target');
+        if (txtTarget) {
+          txtTarget.innerText = waitingVal;
+          txtTarget.title = waitingVal;
+          if (telem.in_entry_zone) {
+            txtTarget.className = 'font-mono font-bold text-emerald-600 dark:text-emerald-400 truncate max-w-[130px]';
+          } else {
+            txtTarget.className = 'font-mono font-bold text-amber-600 dark:text-amber-400 truncate max-w-[130px]';
+          }
+        }
+
+        // Update Entry Radar Bar
+        const rMa = document.getElementById('radar-ma');
+        if (rMa) rMa.innerText = maVal;
+        const rDist = document.getElementById('radar-dist');
+        if (rDist) {
+          rDist.innerText = distVal;
+          if (telem.max_ma_dist > 0 && telem.dist_ma > telem.max_ma_dist) {
+            rDist.className = 'font-mono font-bold text-rose-500';
+          } else {
+            rDist.className = 'font-mono font-bold text-slate-800 dark:text-slate-200';
+          }
+        }
+        const rMax = document.getElementById('radar-max-dist');
+        if (rMax) rMax.innerText = maxDistVal;
+        const rWait = document.getElementById('radar-waiting-for');
+        if (rWait) {
+          rWait.innerText = waitingVal;
+          rWait.className = telem.in_entry_zone ? 'font-mono font-extrabold text-emerald-600 dark:text-emerald-400' : 'font-mono font-extrabold text-amber-600 dark:text-amber-400';
+        }
+
+        // Radar Dot & Headline logic
+        const rDot = document.getElementById('dot-entry-radar');
+        const rHead = document.getElementById('txt-entry-headline');
+        const rMode = document.getElementById('badge-entry-mode');
+        const sideMode = (s.config && s.config.side) ? s.config.side.toUpperCase() : 'BOTH';
+        if (rMode) rMode.innerText = sideMode;
+
+        if (s.is_running && s.bot) {
+          if (s.config && s.config.break_time) {
+            if (rDot) rDot.className = 'w-3 h-3 rounded-full bg-amber-500 flex-shrink-0';
+            if (rHead) rHead.innerText = '☕ Break Time Active: Finishing open trades, new orders paused';
+          } else if (s.bot.nopen > 0) {
+            if (rDot) rDot.className = 'w-3 h-3 rounded-full bg-blue-500 flex-shrink-0 pulse-dot';
+            if (rHead) rHead.innerText = `Active Position Open (${s.bot.nopen} legs) — Tracking profit target`;
+          } else if (s.bot.status && s.bot.status.includes('COOLDOWN')) {
+            if (rDot) rDot.className = 'w-3 h-3 rounded-full bg-amber-500 flex-shrink-0 pulse-dot';
+            if (rHead) rHead.innerText = `${s.bot.status} — Waiting before next entry`;
+          } else if (telem.in_entry_zone) {
+            if (rDot) rDot.className = 'w-3 h-3 rounded-full bg-emerald-500 flex-shrink-0 pulse-dot';
+            if (rHead) rHead.innerText = `Price in Entry Zone — Engine armed for ${sideMode} signal`;
+          } else {
+            if (rDot) rDot.className = 'w-3 h-3 rounded-full bg-amber-500 flex-shrink-0 pulse-dot';
+            if (rHead) rHead.innerText = `Overextended (${distVal} > ${maxDistVal}) — Waiting for price pull back to MA`;
+          }
+        } else {
+          if (telem.in_entry_zone) {
+            if (rDot) rDot.className = 'w-3 h-3 rounded-full bg-emerald-500 flex-shrink-0';
+            if (rHead) rHead.innerText = 'Bot Stopped — Price is currently within entry zone';
+          } else {
+            if (rDot) rDot.className = 'w-3 h-3 rounded-full bg-slate-400 flex-shrink-0';
+            if (rHead) rHead.innerText = 'Bot Stopped — Price currently outside entry zone';
+          }
+        }
+      }
+
       // Bot Core Metrics
       if (s.bot) {
         const b = s.bot;
         document.getElementById('txt-bot-status').innerText = b.status || (isRunning ? 'RUNNING' : 'IDLE');
-        document.getElementById('txt-ma').innerText = b.ma > 0 ? b.ma.toFixed(2) : '---';
+        const currentMa = (telem && telem.current_ma > 0) ? telem.current_ma : (b.ma > 0 ? b.ma : 0);
+        document.getElementById('txt-ma').innerText = currentMa > 0 ? currentMa.toFixed(2) : '---';
         const rsiEl = document.getElementById('txt-rsi');
         if (rsiEl && b.rsi !== undefined) {
           rsiEl.innerText = b.rsi.toFixed(1);
@@ -761,8 +896,8 @@
 
         // Trend Bias
         const trendEl = document.getElementById('badge-trend');
-        if (s.market && b.ma > 0) {
-          const bullish = s.market.bid > b.ma;
+        if (s.market && currentMa > 0) {
+          const bullish = s.market.bid >= currentMa;
           trendEl.innerText = bullish ? 'BULLISH' : 'BEARISH';
           trendEl.className = `px-1.5 py-0.5 rounded text-[10px] font-bold ${bullish ? 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400'}`;
         }
