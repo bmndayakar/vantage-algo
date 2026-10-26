@@ -304,6 +304,7 @@ class BotManager:
                     "margin": float(acc.margin),
                     "free_margin": float(acc.margin_free),
                     "margin_level": float(acc.margin_level or 0.0),
+                    "leverage": int(acc.leverage or 100),
                     "currency": acc.currency,
                     "algo_trading_allowed": bool(ti.trade_allowed) if ti else False,
                 }
@@ -312,6 +313,7 @@ class BotManager:
             mt5.symbol_select(sym, True)
             tk = mt5.symbol_info_tick(sym)
             info = mt5.symbol_info(sym)
+            cs = float(info.trade_contract_size) if (info and info.trade_contract_size > 0) else (100000.0 if ("USD" in sym and "XAU" not in sym and "GOLD" not in sym) else 100.0)
 
             if tk and tk.bid > 0 and tk.ask > 0:
                 if tk.time_msc != self.last_tick_msc:
@@ -335,6 +337,7 @@ class BotManager:
                     "bid": float(tk.bid),
                     "ask": float(tk.ask),
                     "spread": round(float(tk.ask - tk.bid), 2),
+                    "contract_size": cs,
                     "time": int(tk.time),
                     "is_live": is_live,
                     "tick_age_sec": max(0, int(tick_age)),
@@ -346,6 +349,7 @@ class BotManager:
                         "bid": float(tk.bid or 0.0),
                         "ask": float(tk.ask or 0.0),
                         "spread": 0.0,
+                        "contract_size": cs,
                         "time": int(tk.time or 0),
                         "is_live": False,
                         "tick_age_sec": 999999,
@@ -548,6 +552,11 @@ class BotManager:
                 self.last_tick = None
                 self.last_tick_msc = -1
                 self.live_ma = 0.0
+                if self.bot:
+                    self.bot.c = self.cfg
+                    self.bot.margin_cooldown_until = 0
+                    self.bot.margin_reject_count = 0
+                    self.bot.last_order_error = ""
                 self.get_mt5_account_and_market()
                 return {"status": "ok", "message": f"Active symbol changed to {sym_clean}", "symbol": sym_clean}
             except Exception as e:
@@ -663,6 +672,7 @@ class BotManager:
                     self.bot.c = self.cfg
                     # Clear stale margin cooldown so new settings apply immediately
                     self.bot.margin_cooldown_until = 0
+                    self.bot.margin_reject_count = 0
                     self.bot.last_order_error = ""
                 return {"status": "ok", "message": "Configuration updated successfully."}
             except Exception as e:

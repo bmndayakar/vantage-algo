@@ -81,7 +81,7 @@ class Bot:
         s.status = "Initializing..."; s.basket = 0.0; s.last_exit = 0; s.open_time = 0; s.ma = 0.0
         s.daily = 0.0; s.deals = 0; s.nopen = 0; s.tp_price = 0.0; s.dir = 0
         s.peak = 0.0; s.trail_stop = 0.0; s.flip = 0; s.exposure = 0.0
-        s.dist_ma = 0.0; s.rsi = 50.0; s.margin_cooldown_until = 0; s.last_order_error = ""
+        s.dist_ma = 0.0; s.rsi = 50.0; s.margin_cooldown_until = 0; s.last_order_error = ""; s.margin_reject_count = 0
         s.events = []
 
     # ---- CSV decision log ----
@@ -193,15 +193,26 @@ class Bot:
                 if tc < s.margin_cooldown_until:
                     rem = s.margin_cooldown_until - tc
                     err_msg = f": {s.last_order_error}" if s.last_order_error else ""
-                    s.status = f"GRID WAIT MARGIN ({rem}s{err_msg})"; return
+                    if s.margin_reject_count >= 2:
+                        s.status = f"GRID PAUSED (INSUFFICIENT MARGIN): {s.last_order_error}"
+                    else:
+                        s.status = f"GRID WAIT MARGIN ({rem}s{err_msg})"
+                    return
                 ok, rc = s.br.order(1 if has_buy else -1)
                 side = "BUY" if has_buy else "SELL"
                 if ok:
                     s.last_order_error = ""
+                    s.margin_reject_count = 0
                     s.log("ENTRY", side, "grid-add", bid, total, 0.0)
                 else:
                     s.last_order_error = str(rc)
                     s.log("SKIP", side, f"grid-add-failed rc={rc}", bid, total, 0.0)
+                    if "MARGIN" in str(rc).upper():
+                        s.margin_reject_count += 1
+                        if s.margin_reject_count >= 2:
+                            s.margin_cooldown_until = tc + 86400
+                            s.status = f"GRID PAUSED (INSUFFICIENT MARGIN): {rc}"
+                            return
                     s.margin_cooldown_until = tc + 60
                     s.status = f"GRID MARGIN GUARD: {rc}"
             return
@@ -220,7 +231,11 @@ class Bot:
             if tc < s.margin_cooldown_until:
                 rem = s.margin_cooldown_until - tc
                 err_msg = f": {s.last_order_error}" if s.last_order_error else ""
-                s.status = f"MARGIN COOLDOWN {rem}s{err_msg}"; return
+                if s.margin_reject_count >= 2:
+                    s.status = f"PAUSED (INSUFFICIENT MARGIN): {s.last_order_error}. Please reduce lot size in Settings (⚙️)."
+                else:
+                    s.status = f"MARGIN COOLDOWN {rem}s{err_msg}"
+                return
             if c.break_time: s.status = "☕ BREAK TIME (Tracking, no entries)"; s.flip = 0; return
             if s.daily >= c.daily_goal: s.status = "GOAL REACHED"; s.flip = 0; return
             if s.flip != 0 and not s.allowed(s.flip): s.flip = 0
@@ -229,11 +244,18 @@ class Bot:
                 ok, rc = s.br.order(fd); fs = "BUY" if fd > 0 else "SELL"
                 if ok:
                     s.last_order_error = ""
+                    s.margin_reject_count = 0
                     s.log("ENTRY", fs, "flip-reversal", bid, 0.0, 0.0)
                 else:
                     s.last_order_error = str(rc)
                     s.log("SKIP", fs, f"flip-failed rc={rc}", bid, 0.0, 0.0)
                     s.last_exit = tc
+                    if "MARGIN" in str(rc).upper():
+                        s.margin_reject_count += 1
+                        if s.margin_reject_count >= 2:
+                            s.margin_cooldown_until = tc + 86400
+                            s.status = f"PAUSED (INSUFFICIENT MARGIN): {rc}. Please reduce lot size in Settings (⚙️)."
+                            return
                     s.margin_cooldown_until = tc + 60
                     s.status = f"MARGIN GUARD: {rc}"
                 return
@@ -272,11 +294,18 @@ class Bot:
                 ok, rc = s.br.order(d); side = "BUY" if d > 0 else "SELL"
                 if ok:
                     s.last_order_error = ""
+                    s.margin_reject_count = 0
                     s.log("ENTRY", side, "ma-signal", bid, 0.0, 0.0)
                 else:
                     s.last_order_error = str(rc)
                     s.log("SKIP", side, f"ma-signal-failed rc={rc}", bid, 0.0, 0.0)
                     s.last_exit = tc
+                    if "MARGIN" in str(rc).upper():
+                        s.margin_reject_count += 1
+                        if s.margin_reject_count >= 2:
+                            s.margin_cooldown_until = tc + 86400
+                            s.status = f"PAUSED (INSUFFICIENT MARGIN): {rc}. Please reduce lot size in Settings (⚙️)."
+                            return
                     s.margin_cooldown_until = tc + 60
                     s.status = f"MARGIN GUARD: {rc}"
             else:
@@ -694,6 +723,8 @@ def selftest():
     # 8f. Margin Pre-check: blocks order and enforces 60s cooldown if free margin is insufficient
     cfg, b, bot = mk(); b.margin_fail = True; step(b, bot)
     check("margin pre-check blocks order and enforces margin cooldown", not b.pos and "MARGIN" in bot.status and bot.margin_cooldown_until > b.t)
+    b.t += 61; step(b, bot) # Second consecutive margin reject triggers pause instead of infinite loop
+    check("margin pre-check breaks endless loop after repeated rejects", not b.pos and "PAUSED (INSUFFICIENT MARGIN)" in bot.status and bot.margin_reject_count >= 2)
 
     # 9. CSV logger writes a header + rows
     d = tempfile.mkdtemp(); global HERE
