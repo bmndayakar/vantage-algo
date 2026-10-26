@@ -397,121 +397,129 @@
   </main>
 
   <!-- PARAMETER SETTINGS MODAL -->
-  <div id="modal-config" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/75 backdrop-blur-sm p-4">
-    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl max-w-xl w-full p-6 shadow-2xl relative">
-      <div class="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+  <div id="modal-config" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/75 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl max-w-xl w-full p-4 sm:p-6 shadow-2xl relative my-auto max-h-[92vh] flex flex-col">
+      <!-- Fixed Header -->
+      <div class="flex items-center justify-between pb-3 sm:pb-4 border-b border-slate-100 dark:border-slate-800 flex-shrink-0">
         <div>
-          <h2 class="text-lg font-bold text-slate-900 dark:text-white">Bot Configuration</h2>
+          <h2 class="text-base sm:text-lg font-bold text-slate-900 dark:text-white">Bot Configuration</h2>
           <p class="text-xs text-slate-500 dark:text-slate-400">Live tweak parameters (takes effect on running bot immediately)</p>
         </div>
         <button onclick="closeConfigModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-white text-2xl leading-none">&times;</button>
       </div>
 
-      <form id="form-config" onsubmit="saveConfig(event)" class="mt-4 grid grid-cols-2 gap-4 text-xs">
-        <div>
-          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Trading Symbol</label>
-          <select id="cfg-symbol" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white font-mono">
-            <option value="XAUUSD">XAUUSD</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Direction Bias</label>
-          <select id="cfg-side" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white font-medium">
-            <option value="both">Both (Buy &amp; Sell)</option>
-            <option value="buy">Buy Only (Bullish)</option>
-            <option value="sell">Sell Only (Bearish)</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Lot Size</label>
-          <input type="number" step="0.01" id="cfg-lots" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
+      <!-- Form Body with Scrollable Inputs and Pinned Footer -->
+      <form id="form-config" onsubmit="saveConfig(event)" class="mt-3 sm:mt-4 flex-1 flex flex-col min-h-0">
+        <!-- Scrollable Inputs Container -->
+        <div class="overflow-y-auto pr-1 sm:pr-2 space-y-4 flex-1 min-h-0">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-xs">
+            <div>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Trading Symbol</label>
+              <select id="cfg-symbol" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white font-mono">
+                <option value="XAUUSD">XAUUSD</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Direction Bias</label>
+              <select id="cfg-side" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white font-medium">
+                <option value="both">Both (Buy &amp; Sell)</option>
+                <option value="buy">Buy Only (Bullish)</option>
+                <option value="sell">Sell Only (Bearish)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Lot Size</label>
+              <input type="number" step="0.01" id="cfg-lots" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
+            </div>
+
+            <div>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Daily Profit Goal ($)</label>
+              <input type="number" step="1.0" id="cfg-daily_goal" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
+            </div>
+            <div>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">MA Period</label>
+              <input type="number" id="cfg-ma_period" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
+            </div>
+
+            <div>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Grid Max Legs</label>
+              <input type="number" id="cfg-grid_max_legs" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
+            </div>
+            <div>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Grid Step Loss ($)</label>
+              <input type="number" step="0.5" id="cfg-grid_step_loss" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
+            </div>
+
+            <div>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Trail Arm ($)</label>
+              <input type="number" step="0.1" id="cfg-trail_arm" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
+            </div>
+            <div>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Trail Giveback Frac</label>
+              <input type="number" step="0.05" id="cfg-trail_give_frac" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
+            </div>
+
+            <div>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Soft Cap (Minutes)</label>
+              <input type="number" id="cfg-soft_cap_min" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
+            </div>
+            <div>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Emergency Grid SL ($)</label>
+              <input type="number" step="1.0" id="cfg-grid_sl" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
+            </div>
+
+            <div>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Max Spread Guard ($)</label>
+              <input type="number" step="0.1" id="cfg-max_spread" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="e.g. 1.0 (0=Off)">
+            </div>
+            <div>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Min Cooldown Gap (Sec)</label>
+              <input type="number" step="1" id="cfg-min_entry_gap_sec" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="default 15">
+            </div>
+
+            <div>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Max MA Distance Guard ($)</label>
+              <input type="number" step="0.5" id="cfg-max_ma_dist" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="e.g. 2.50 (0=Off)">
+            </div>
+            <div class="flex items-center pt-2 sm:pt-5">
+              <label class="flex items-center space-x-2 cursor-pointer select-none">
+                <input type="checkbox" id="cfg-rsi_filter" class="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700">
+                <span class="text-slate-700 dark:text-slate-300 font-medium">RSI Climax Guard (Block Buy &gt; 70, Sell &lt; 30)</span>
+              </label>
+            </div>
+            <div>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Min Free Margin Guard ($)</label>
+              <input type="number" step="1.0" id="cfg-min_free_margin" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="default 10.0">
+            </div>
+            <div>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Min Margin Level Guard (%)</label>
+              <input type="number" step="10.0" id="cfg-min_margin_level" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="default 200.0">
+            </div>
+
+            <div class="col-span-1 sm:col-span-2 pt-1 sm:pt-2">
+              <label class="flex items-center space-x-2 cursor-pointer select-none">
+                <input type="checkbox" id="cfg-break_time" class="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700">
+                <span class="text-amber-600 dark:text-amber-400 font-bold flex items-center space-x-1">
+                  <span>☕</span>
+                  <span>Break Time (Finish open trades &amp; exit safely, but block new entries)</span>
+                </span>
+              </label>
+            </div>
+          </div>
         </div>
 
-        <div>
-          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Daily Profit Goal ($)</label>
-          <input type="number" step="1.0" id="cfg-daily_goal" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
-        </div>
-        <div>
-          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">MA Period</label>
-          <input type="number" id="cfg-ma_period" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
-        </div>
-
-        <div>
-          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Grid Max Legs</label>
-          <input type="number" id="cfg-grid_max_legs" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
-        </div>
-        <div>
-          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Grid Step Loss ($)</label>
-          <input type="number" step="0.5" id="cfg-grid_step_loss" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
-        </div>
-
-        <div>
-          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Trail Arm ($)</label>
-          <input type="number" step="0.1" id="cfg-trail_arm" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
-        </div>
-        <div>
-          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Trail Giveback Frac</label>
-          <input type="number" step="0.05" id="cfg-trail_give_frac" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
-        </div>
-
-        <div>
-          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Soft Cap (Minutes)</label>
-          <input type="number" id="cfg-soft_cap_min" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
-        </div>
-        <div>
-          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Emergency Grid SL ($)</label>
-          <input type="number" step="1.0" id="cfg-grid_sl" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
-        </div>
-
-        <div>
-          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Max Spread Guard ($)</label>
-          <input type="number" step="0.1" id="cfg-max_spread" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="e.g. 1.0 (0=Off)">
-        </div>
-        <div>
-          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Min Cooldown Gap (Sec)</label>
-          <input type="number" step="1" id="cfg-min_entry_gap_sec" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="default 15">
-        </div>
-
-        <div>
-          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Max MA Distance Guard ($)</label>
-          <input type="number" step="0.5" id="cfg-max_ma_dist" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="e.g. 2.50 (0=Off)">
-        </div>
-        <div class="flex items-center pt-5">
-          <label class="flex items-center space-x-2 cursor-pointer select-none">
-            <input type="checkbox" id="cfg-rsi_filter" class="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700">
-            <span class="text-slate-700 dark:text-slate-300 font-medium">RSI Climax Guard (Block Buy &gt; 70, Sell &lt; 30)</span>
-          </label>
-        </div>
-        <div>
-          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Min Free Margin Guard ($)</label>
-          <input type="number" step="1.0" id="cfg-min_free_margin" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="default 10.0">
-        </div>
-        <div>
-          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Min Margin Level Guard (%)</label>
-          <input type="number" step="10.0" id="cfg-min_margin_level" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="default 200.0">
-        </div>
-
-        <div class="col-span-2 pt-2">
-          <label class="flex items-center space-x-2 cursor-pointer select-none">
-            <input type="checkbox" id="cfg-break_time" class="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700">
-            <span class="text-amber-600 dark:text-amber-400 font-bold flex items-center space-x-1">
-              <span>☕</span>
-              <span>Break Time (Finish open trades &amp; exit safely, but block new entries)</span>
-            </span>
-          </label>
-        </div>
-
-        <div class="col-span-2 pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end space-x-3">
-          <button type="button" onclick="closeConfigModal()" class="px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300">Cancel</button>
-          <button type="submit" class="px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 font-semibold text-slate-900 shadow">Save & Apply</button>
+        <!-- Pinned Actions Footer (Always Visible) -->
+        <div class="pt-3 sm:pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-end space-x-3 mt-3 flex-shrink-0 bg-white dark:bg-slate-900">
+          <button type="button" onclick="closeConfigModal()" class="px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium text-xs transition">Cancel</button>
+          <button type="submit" class="px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 font-bold text-slate-900 shadow text-xs transition">Save &amp; Apply</button>
         </div>
       </form>
     </div>
   </div>
 
   <!-- MT5 LOGIN MODAL -->
-  <div id="modal-login" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/75 backdrop-blur-sm p-4">
-    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+  <div id="modal-login" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/75 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl max-w-md w-full p-4 sm:p-6 shadow-2xl relative my-auto max-h-[92vh] flex flex-col">
       <div class="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
         <div class="flex items-center space-x-3">
           <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-500 text-lg">
