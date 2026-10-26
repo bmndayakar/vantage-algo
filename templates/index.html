@@ -1291,7 +1291,8 @@
 
     // Toggle Bot (Start / Stop)
     async function toggleBot() {
-      const allowReal = document.getElementById('chk-allow-real').checked;
+      const chk = document.getElementById('chk-allow-real');
+      let allowReal = chk ? chk.checked : false;
       if (!isRunning) {
         if (chart) {
           chartData.labels = [];
@@ -1304,11 +1305,27 @@
           body: JSON.stringify({ allow_real: allowReal })
         });
         const data = await res.json();
-        if (data.status === 'error') showAlert(data.message);
+        if (data.status === 'error') {
+          if (data.message && data.message.includes('REAL account detected')) {
+            if (confirm("REAL account detected. Toggle 'Allow Real Account' ON and resume bot?")) {
+              if (chk) chk.checked = true;
+              const res2 = await fetch('/api/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ allow_real: true })
+              });
+              const data2 = await res2.json();
+              if (data2.status === 'error') showAlert(data2.message);
+              return;
+            }
+          }
+          showAlert(data.message);
+        }
       } else {
         await fetch('/api/stop', { method: 'POST' });
       }
     }
+    function startBot() { toggleBot(); }
 
     // Emergency Close All
     async function confirmCloseAll() {
