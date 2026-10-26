@@ -153,7 +153,13 @@
           <div class="flex items-center space-x-1">
             <span class="text-xs text-amber-500">⚡</span>
             <select id="select-symbol" onchange="onSymbolChange(this.value)" class="bg-transparent font-bold text-slate-900 dark:text-white border-b border-dashed border-slate-300 dark:border-slate-700 py-0.5 pr-1 focus:outline-none cursor-pointer text-sm font-mono hover:border-amber-500 transition">
-              <option value="XAUUSD">XAUUSD</option>
+              <option value="XAUUSD">XAUUSD (Gold)</option>
+              <option value="EURUSD">EURUSD</option>
+              <option value="GBPUSD">GBPUSD</option>
+              <option value="USDJPY">USDJPY</option>
+              <option value="AUDUSD">AUDUSD</option>
+              <option value="USDCAD">USDCAD</option>
+              <option value="BTCUSD">BTCUSD</option>
             </select>
           </div>
           <div class="flex items-center space-x-1.5">
@@ -415,9 +421,19 @@
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-xs">
             <div>
               <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Trading Symbol</label>
-              <select id="cfg-symbol" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white font-mono">
-                <option value="XAUUSD">XAUUSD</option>
-              </select>
+              <input type="text" id="cfg-symbol" list="symbol-datalist" placeholder="e.g. EURUSD, GBPUSD, XAUUSD" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white font-mono uppercase focus:ring-2 focus:ring-amber-500 outline-none">
+              <datalist id="symbol-datalist">
+                <option value="XAUUSD">
+                <option value="EURUSD">
+                <option value="GBPUSD">
+                <option value="USDJPY">
+                <option value="AUDUSD">
+                <option value="USDCAD">
+                <option value="USDCHF">
+                <option value="NZDUSD">
+                <option value="BTCUSD">
+                <option value="ETHUSD">
+              </datalist>
             </div>
             <div>
               <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Direction Bias</label>
@@ -1075,34 +1091,45 @@
         if (shouldScroll) term.scrollTop = term.scrollHeight;
       }
 
+      if (s.config) latestConfig = s.config;
+
       // Populate and update Symbol Selector
       const currentSym = s.symbol || (s.config ? s.config.symbol : 'XAUUSD');
       const badgeSym = document.getElementById('badge-active-symbol');
       if (badgeSym) badgeSym.innerText = currentSym;
 
+      const sel1 = document.getElementById('select-symbol');
+      const dl = document.getElementById('symbol-datalist');
       if (s.symbols && s.symbols.length > 0) {
-        const sel1 = document.getElementById('select-symbol');
-        const sel2 = document.getElementById('cfg-symbol');
         if (sel1 && (!sel1.dataset.loaded || sel1.options.length <= 1)) {
-          const populateSelect = (el) => {
-            if (!el) return;
-            const prev = el.value || currentSym;
-            el.innerHTML = '';
-            s.symbols.forEach(sym => {
-              const opt = document.createElement('option');
-              opt.value = sym;
-              opt.innerText = sym;
-              opt.className = 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white';
-              el.appendChild(opt);
-            });
-            el.value = prev;
-            el.dataset.loaded = 'true';
-          };
-          populateSelect(sel1);
-          populateSelect(sel2);
+          sel1.innerHTML = '';
+          if (dl) dl.innerHTML = '';
+          s.symbols.forEach(sym => {
+            const opt = document.createElement('option');
+            opt.value = sym;
+            opt.innerText = sym;
+            opt.className = 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white';
+            sel1.appendChild(opt);
+
+            if (dl) {
+              const dopt = document.createElement('option');
+              dopt.value = sym;
+              dl.appendChild(dopt);
+            }
+          });
+          sel1.dataset.loaded = 'true';
         }
-        if (sel1 && sel1.value !== currentSym) sel1.value = currentSym;
-        if (sel2 && sel2.value !== currentSym) sel2.value = currentSym;
+      }
+      if (sel1 && document.activeElement !== sel1 && sel1.value !== currentSym) {
+        sel1.value = currentSym;
+      }
+
+      // Do NOT overwrite modal symbol while modal is open
+      const modalConfig = document.getElementById('modal-config');
+      const isModalOpen = modalConfig && !modalConfig.classList.contains('hidden');
+      const cfgSym = document.getElementById('cfg-symbol');
+      if (!isModalOpen && cfgSym && document.activeElement !== cfgSym && cfgSym.value !== currentSym) {
+        cfgSym.value = currentSym;
       }
 
       // Populate config form if empty
@@ -1178,7 +1205,8 @@
       if (isRunning) {
         alert('Please stop the bot before switching the trading symbol.');
         const currentSym = document.getElementById('badge-active-symbol').innerText;
-        document.getElementById('select-symbol').value = currentSym;
+        const sel1 = document.getElementById('select-symbol');
+        if (sel1) sel1.value = currentSym;
         return;
       }
       try {
@@ -1190,8 +1218,16 @@
         const data = await res.json();
         if (data.status === 'error') {
           showAlert(data.message);
+          const currentSym = document.getElementById('badge-active-symbol').innerText;
+          const sel1 = document.getElementById('select-symbol');
+          if (sel1) sel1.value = currentSym;
         } else {
-          document.getElementById('badge-active-symbol').innerText = newSym;
+          const actualSym = data.symbol || newSym;
+          document.getElementById('badge-active-symbol').innerText = actualSym;
+          const sel1 = document.getElementById('select-symbol');
+          if (sel1) sel1.value = actualSym;
+          const cfgSym = document.getElementById('cfg-symbol');
+          if (cfgSym) cfgSym.value = actualSym;
           if (chart) {
             chartData.labels = [];
             chartData.datasets[0].data = [];
@@ -1253,13 +1289,38 @@
       }
     }
 
+    let latestConfig = null;
+
     // Modal Helpers: Config
-    function openConfigModal() { document.getElementById('modal-config').classList.remove('hidden'); }
-    function closeConfigModal() { document.getElementById('modal-config').classList.add('hidden'); }
+    function openConfigModal() {
+      const modal = document.getElementById('modal-config');
+      modal.classList.remove('hidden');
+      if (latestConfig) {
+        for (let k in latestConfig) {
+          const el = document.getElementById('cfg-' + k);
+          if (el) {
+            if (el.type === 'checkbox') {
+              el.checked = Boolean(latestConfig[k]);
+            } else {
+              el.value = latestConfig[k];
+            }
+          }
+        }
+      }
+      const activeSym = document.getElementById('badge-active-symbol').innerText;
+      const cfgSym = document.getElementById('cfg-symbol');
+      if (cfgSym && activeSym) cfgSym.value = activeSym;
+    }
+
+    function closeConfigModal() {
+      document.getElementById('modal-config').classList.add('hidden');
+    }
+
     async function saveConfig(e) {
       e.preventDefault();
+      const symVal = (document.getElementById('cfg-symbol').value || '').trim().toUpperCase();
       const cfg = {
-        symbol: document.getElementById('cfg-symbol').value,
+        symbol: symVal || 'XAUUSD',
         side: document.getElementById('cfg-side').value || 'both',
         lots: parseFloat(document.getElementById('cfg-lots').value),
         daily_goal: parseFloat(document.getElementById('cfg-daily_goal').value),
@@ -1284,8 +1345,20 @@
         body: JSON.stringify(cfg)
       });
       const data = await res.json();
-      closeConfigModal();
-      alert(data.message);
+      if (data.status === 'ok') {
+        closeConfigModal();
+        document.getElementById('badge-active-symbol').innerText = cfg.symbol;
+        const sel1 = document.getElementById('select-symbol');
+        if (sel1) sel1.value = cfg.symbol;
+        if (chart) {
+          chartData.labels = [];
+          chartData.datasets[0].data = [];
+          chart.update();
+        }
+        alert('Configuration saved! Active symbol set to: ' + cfg.symbol);
+      } else {
+        showAlert(data.message || 'Failed to update config.');
+      }
     }
 
     // Break Time ☕ Quick Toggle

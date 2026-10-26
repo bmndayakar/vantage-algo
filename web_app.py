@@ -534,11 +534,22 @@ class BotManager:
                 import MetaTrader5 as mt5
                 if not mt5.initialize(**bot_module.mt5_env()):
                     return {"status": "error", "message": "MT5 not connected."}
-                if not mt5.symbol_select(symbol, True):
-                    return {"status": "error", "message": f"Could not select symbol '{symbol}' in MT5."}
-                self.cfg.symbol = symbol
+                sym_clean = str(symbol).strip().upper()
+                selected = False
+                for candidate in [sym_clean, sym_clean + ".a", sym_clean + "m", sym_clean + ".", sym_clean + "+"]:
+                    if mt5.symbol_select(candidate, True) and mt5.symbol_info(candidate) is not None:
+                        sym_clean = candidate
+                        selected = True
+                        break
+                if not selected:
+                    return {"status": "error", "message": f"Could not select symbol '{sym_clean}' in MT5. Please ensure it is added in MT5 Market Watch."}
+
+                self.cfg.symbol = sym_clean
+                self.last_tick = None
+                self.last_tick_msc = -1
+                self.live_ma = 0.0
                 self.get_mt5_account_and_market()
-                return {"status": "ok", "message": f"Active symbol changed to {symbol}", "symbol": symbol}
+                return {"status": "ok", "message": f"Active symbol changed to {sym_clean}", "symbol": sym_clean}
             except Exception as e:
                 return {"status": "error", "message": str(e)}
 
@@ -611,7 +622,31 @@ class BotManager:
     def update_config(self, new_cfg: Dict[str, Any]) -> Dict[str, Any]:
         with self.lock:
             try:
+                # If symbol is being changed, validate it via set_symbol logic first
+                if "symbol" in new_cfg and new_cfg["symbol"]:
+                    new_sym = str(new_cfg["symbol"]).strip().upper()
+                    if new_sym != self.cfg.symbol:
+                        if self.is_running:
+                            return {"status": "error", "message": "Please stop the bot before switching the active symbol."}
+                        import MetaTrader5 as mt5
+                        if mt5.initialize(**bot_module.mt5_env()):
+                            selected = False
+                            for candidate in [new_sym, new_sym + ".a", new_sym + "m", new_sym + ".", new_sym + "+"]:
+                                if mt5.symbol_select(candidate, True) and mt5.symbol_info(candidate) is not None:
+                                    new_sym = candidate
+                                    selected = True
+                                    break
+                            if not selected:
+                                return {"status": "error", "message": f"Could not find symbol '{new_sym}' in MT5 Market Watch."}
+                        self.cfg.symbol = new_sym
+                        self.last_tick = None
+                        self.last_tick_msc = -1
+                        self.live_ma = 0.0
+                        self.get_mt5_account_and_market()
+
                 for k, v in new_cfg.items():
+                    if k == "symbol":
+                        continue
                     if hasattr(self.cfg, k):
                         target_type = type(getattr(self.cfg, k))
                         if target_type is bool:
