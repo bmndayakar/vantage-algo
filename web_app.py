@@ -529,6 +529,16 @@ async def update_config(payload: Dict[str, Any]):
     return manager.update_config(payload)
 
 
+@app.post("/api/break-time")
+async def toggle_break_time(payload: Dict[str, Any]):
+    enabled = bool(payload.get("enabled", False))
+    with manager.lock:
+        manager.cfg.break_time = enabled
+        if manager.bot:
+            manager.bot.c.break_time = enabled
+    return {"status": "ok", "break_time": enabled}
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()

@@ -102,6 +102,15 @@
           <span class="font-medium">Allow Real</span>
         </label>
 
+        <!-- Break Time ☕ Toggle Button -->
+        <label id="lbl-break-time-container" class="flex items-center space-x-1.5 text-xs text-amber-800 dark:text-amber-300 cursor-pointer bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/10 dark:hover:bg-amber-500/20 px-3 py-2 rounded-lg border border-amber-300 dark:border-amber-500/30 transition select-none" title="Break Time ☕: Finish active trades & exit safely, but block all new orders until unchecked">
+          <input type="checkbox" id="chk-break-time" onchange="toggleBreakTime(this.checked)" class="w-4 h-4 rounded bg-white dark:bg-slate-900 border-amber-400 text-amber-500 focus:ring-amber-500">
+          <span class="font-bold flex items-center space-x-1">
+            <span>☕</span>
+            <span class="hidden sm:inline">Break Time</span>
+          </span>
+        </label>
+
         <!-- Start / Stop Toggle -->
         <button id="btn-toggle-bot" onclick="toggleBot()" class="px-4 sm:px-5 py-2 rounded-lg font-semibold text-sm shadow transition-all duration-150 flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-500 text-white">
           <span id="icon-bot">▶</span>
@@ -424,6 +433,15 @@
             <span class="text-slate-700 dark:text-slate-300 font-medium">RSI Climax Guard (Block Buy &gt; 70, Sell &lt; 30)</span>
           </label>
         </div>
+        <div class="col-span-2 pt-2">
+          <label class="flex items-center space-x-2 cursor-pointer select-none">
+            <input type="checkbox" id="cfg-break_time" class="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700">
+            <span class="text-amber-600 dark:text-amber-400 font-bold flex items-center space-x-1">
+              <span>☕</span>
+              <span>Break Time (Finish open trades &amp; exit safely, but block new entries)</span>
+            </span>
+          </label>
+        </div>
 
         <div class="col-span-2 pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end space-x-3">
           <button type="button" onclick="closeConfigModal()" class="px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300">Cancel</button>
@@ -673,6 +691,24 @@
         btn.className = 'px-4 sm:px-5 py-2 rounded-lg font-semibold text-sm shadow transition-all duration-150 flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-500 text-white';
         icon.innerText = '▶';
         lbl.innerText = 'START BOT';
+      }
+
+      // Break Time ☕ Sync
+      if (s.config && s.config.break_time !== undefined) {
+        const isBreak = Boolean(s.config.break_time);
+        const chkBreak = document.getElementById('chk-break-time');
+        if (chkBreak && chkBreak !== document.activeElement) chkBreak.checked = isBreak;
+        const chkBreakModal = document.getElementById('cfg-break_time');
+        if (chkBreakModal && chkBreakModal !== document.activeElement) chkBreakModal.checked = isBreak;
+
+        const lblBreak = document.getElementById('lbl-break-time-container');
+        if (lblBreak) {
+          if (isBreak) {
+            lblBreak.className = 'flex items-center space-x-1.5 text-xs text-amber-900 dark:text-amber-200 cursor-pointer bg-amber-400/25 hover:bg-amber-400/35 dark:bg-amber-500/25 dark:hover:bg-amber-500/35 px-3 py-2 rounded-lg border-2 border-amber-500 transition select-none shadow-sm';
+          } else {
+            lblBreak.className = 'flex items-center space-x-1.5 text-xs text-amber-800 dark:text-amber-300 cursor-pointer bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/10 dark:hover:bg-amber-500/20 px-3 py-2 rounded-lg border border-amber-300 dark:border-amber-500/30 transition select-none';
+          }
+        }
       }
 
       // Market Data
@@ -1061,7 +1097,8 @@
         max_spread: parseFloat(document.getElementById('cfg-max_spread').value) || 0.0,
         max_ma_dist: parseFloat(document.getElementById('cfg-max_ma_dist').value) || 0.0,
         min_entry_gap_sec: parseInt(document.getElementById('cfg-min_entry_gap_sec').value) || 15,
-        rsi_filter: document.getElementById('cfg-rsi_filter').checked
+        rsi_filter: document.getElementById('cfg-rsi_filter').checked,
+        break_time: document.getElementById('cfg-break_time').checked
       };
       const res = await fetch('/api/config', {
         method: 'POST',
@@ -1071,6 +1108,21 @@
       const data = await res.json();
       closeConfigModal();
       alert(data.message);
+    }
+
+    // Break Time ☕ Quick Toggle
+    async function toggleBreakTime(enabled) {
+      try {
+        await fetch('/api/break-time', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: enabled })
+        });
+        const chkModal = document.getElementById('cfg-break_time');
+        if (chkModal) chkModal.checked = enabled;
+      } catch (err) {
+        console.error('Failed to toggle break time:', err);
+      }
     }
 
     function showAlert(msg) {

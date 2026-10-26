@@ -66,6 +66,7 @@ class Cfg:
     rsi_period: int = 14                 # RSI calculation period
     rsi_ob: float = 70.0                 # RSI overbought threshold
     rsi_os: float = 30.0                 # RSI oversold threshold
+    break_time: bool = False             # True: finish open trades, but block new initial entries
     enable_log: bool = True
     log_file: str = "up_down_tracker_decisions_py.csv"   # separate from the EA's CSV
 
@@ -203,6 +204,7 @@ class Bot:
 
         # 4. NEW ENTRY SIGNAL
         if s.nopen == 0:
+            if c.break_time: s.status = "☕ BREAK TIME (Tracking, no entries)"; s.flip = 0; return
             if s.daily >= c.daily_goal: s.status = "GOAL REACHED"; s.flip = 0; return
             if s.flip != 0 and not s.allowed(s.flip): s.flip = 0
             if s.flip != 0:                               # one-shot reversal entry (no cooldown, no MA vote)
@@ -570,6 +572,10 @@ def selftest():
     check("max_ma_dist blocks buy when overextended", not b.pos and bot.status.startswith("OVEREXTENDED"))
     cfg, b, bot = mk(rsi_filter=True); b.rsi_v = 75.0; step(b, bot)
     check("rsi_filter blocks buy when overbought", not b.pos and bot.status.startswith("RSI OVERBOUGHT"))
+
+    # 8e. Break Time filter: finish active trades but block new entries
+    cfg, b, bot = mk(break_time=True); step(b, bot)
+    check("break_time blocks new entry when flat", not b.pos and "BREAK TIME" in bot.status)
 
     # 9. CSV logger writes a header + rows
     d = tempfile.mkdtemp(); global HERE
