@@ -750,10 +750,10 @@
         let html = '';
         s.positions.forEach(p => {
           const isBuy = p.type === 'BUY';
-          const isBot = Boolean(p.is_bot);
+          const isBot = Boolean(p.is_bot || (p.magic && p.magic > 0));
           const pnlColor = p.profit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400';
           const originBadge = isBot
-            ? `<span class="px-1 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30" title="Opened by Algo Bot">B</span>`
+            ? `<span class="px-1 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30" title="Opened by Algo Bot (Magic: ${p.magic || 'Bot'})">B</span>`
             : `<span class="px-1 py-0.5 rounded text-[9px] font-bold bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30" title="Opened by User / Manual">U</span>`;
 
           html += `
