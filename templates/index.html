@@ -1176,7 +1176,6 @@
       }
 
       // Do NOT overwrite modal symbol while modal is open
-      const modalConfig = document.getElementById('modal-config');
       const isModalOpen = modalConfig && !modalConfig.classList.contains('hidden');
       const cfgSym = document.getElementById('cfg-symbol');
       if (!isModalOpen && cfgSym && document.activeElement !== cfgSym && cfgSym.value !== currentSym) {
