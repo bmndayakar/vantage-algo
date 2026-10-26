@@ -67,6 +67,12 @@ python up_down_tracker_win_bot_xauusd.py backtest --symbol EURUSD --days 30
 
 ---
 
+## Documentation & Complete Guide
+For the full architectural breakdown, mathematical formulas, state machine lifecycle diagrams, and parameter reference tables, see:
+👉 **[SYSTEM_GUIDE.md](file:///c:/Users/dayam/Documents/vantage-algo/SYSTEM_GUIDE.md)**
+
+---
+
 ## Configuration (`.env`)
 To auto-launch and log into MT5 automatically, copy `.env.example` to `.env`:
 ```env
