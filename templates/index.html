@@ -255,13 +255,22 @@
         </div>
       </div>
 
-      <!-- OPEN POSITIONS TABLE (1 Col) -->
+      <!-- POSITIONS & TRADES CARD (1 Col, Tabs: Open & Closed) -->
       <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm flex flex-col transition-colors">
-        <div class="flex items-center justify-between mb-4">
-          <div class="flex items-center space-x-2">
-            <span class="text-base font-bold text-slate-900 dark:text-white">Open Positions</span>
-            <span id="badge-open-count" class="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-amber-600 dark:text-amber-400">0</span>
+        
+        <!-- Header with Tabs and Legend -->
+        <div class="flex items-center justify-between mb-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+          <div class="flex items-center space-x-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl text-xs font-semibold">
+            <button id="tab-btn-open" onclick="switchPositionsTab('open')" class="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm flex items-center space-x-1.5 transition-all">
+              <span>Open</span>
+              <span id="badge-open-count" class="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400">0</span>
+            </button>
+            <button id="tab-btn-closed" onclick="switchPositionsTab('closed')" class="px-3 py-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white flex items-center space-x-1.5 transition-all">
+              <span>Closed</span>
+              <span id="badge-closed-count" class="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300">0</span>
+            </button>
           </div>
+
           <span class="text-xs text-slate-400 dark:text-slate-500 flex items-center space-x-1.5 font-mono">
             <span><span class="px-1 py-0.2 rounded text-[9px] font-extrabold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">B</span> Bot</span>
             <span>&bull;</span>
@@ -269,7 +278,8 @@
           </span>
         </div>
 
-        <div class="flex-1 overflow-y-auto max-h-[260px]">
+        <!-- TAB 1: OPEN POSITIONS TABLE -->
+        <div id="tab-content-open" class="flex-1 overflow-y-auto max-h-[250px]">
           <table class="w-full text-left text-xs">
             <thead class="text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 sticky top-0 border-b border-slate-200 dark:border-slate-800">
               <tr>
@@ -286,6 +296,26 @@
             </tbody>
           </table>
         </div>
+
+        <!-- TAB 2: CLOSED TRADES TABLE -->
+        <div id="tab-content-closed" class="hidden flex-1 overflow-y-auto max-h-[250px]">
+          <table class="w-full text-left text-xs">
+            <thead class="text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 sticky top-0 border-b border-slate-200 dark:border-slate-800">
+              <tr>
+                <th class="p-2 font-medium">Type</th>
+                <th class="p-2 font-medium">Lots</th>
+                <th class="p-2 font-medium">Entry &rarr; Exit</th>
+                <th class="p-2 font-medium text-right">Profit ($)</th>
+              </tr>
+            </thead>
+            <tbody id="tbl-closed-positions" class="divide-y divide-slate-100 dark:divide-slate-800/60 font-mono">
+              <tr>
+                <td colspan="4" class="p-8 text-center text-slate-400 dark:text-slate-500 font-sans">No closed trades today</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
       </div>
 
     </div>
@@ -750,7 +780,7 @@
         }
       }
 
-      // Positions Table
+      // Positions Table (Open)
       const tbl = document.getElementById('tbl-positions');
       const countEl = document.getElementById('badge-open-count');
       if (s.positions && s.positions.length > 0) {
@@ -780,6 +810,41 @@
       } else {
         countEl.innerText = '0';
         tbl.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-slate-400 dark:text-slate-500 font-sans">No open positions</td></tr>';
+      }
+
+      // Closed Positions Table
+      const tblClosed = document.getElementById('tbl-closed-positions');
+      const countClosedEl = document.getElementById('badge-closed-count');
+      if (s.closed_positions && s.closed_positions.length > 0) {
+        countClosedEl.innerText = s.closed_positions.length;
+        let htmlClosed = '';
+        s.closed_positions.forEach(p => {
+          const isBuy = p.type === 'BUY';
+          const isBot = Boolean(p.is_bot || (p.magic && p.magic > 0));
+          const pnlColor = p.profit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400';
+          const originBadge = isBot
+            ? `<span class="px-1 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30" title="Closed by Algo Bot (Magic: ${p.magic || 'Bot'})">B</span>`
+            : `<span class="px-1 py-0.5 rounded text-[9px] font-bold bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30" title="Closed by User / Manual">U</span>`;
+
+          htmlClosed += `
+            <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+              <td class="p-2 flex items-center space-x-1.5">
+                <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${isBuy ? 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400'}">${p.type}</span>
+                ${originBadge}
+              </td>
+              <td class="p-2 text-slate-700 dark:text-slate-300">${p.volume}</td>
+              <td class="p-2 text-slate-700 dark:text-slate-300" title="Exit time: ${p.time}">
+                <span>${p.price_open ? p.price_open.toFixed(2) : '---'} &rarr; ${p.price_close.toFixed(2)}</span>
+                <span class="text-[10px] text-slate-400 block">${p.time}</span>
+              </td>
+              <td class="p-2 text-right font-bold ${pnlColor}">${p.profit >= 0 ? '+' : ''}${p.profit.toFixed(2)}</td>
+            </tr>
+          `;
+        });
+        tblClosed.innerHTML = htmlClosed;
+      } else {
+        countClosedEl.innerText = '0';
+        tblClosed.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-slate-400 dark:text-slate-500 font-sans">No closed trades today</td></tr>';
       }
 
       // Live Terminal Feed
@@ -953,6 +1018,26 @@
         const res = await fetch('/api/close-all', { method: 'POST' });
         const data = await res.json();
         alert(data.message);
+      }
+    }
+
+    // Tab Switcher: Open vs Closed Positions
+    function switchPositionsTab(tab) {
+      const btnOpen = document.getElementById('tab-btn-open');
+      const btnClosed = document.getElementById('tab-btn-closed');
+      const contentOpen = document.getElementById('tab-content-open');
+      const contentClosed = document.getElementById('tab-content-closed');
+
+      if (tab === 'open') {
+        btnOpen.className = 'px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm flex items-center space-x-1.5 transition-all';
+        btnClosed.className = 'px-3 py-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white flex items-center space-x-1.5 transition-all';
+        contentOpen.classList.remove('hidden');
+        contentClosed.classList.add('hidden');
+      } else {
+        btnClosed.className = 'px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm flex items-center space-x-1.5 transition-all';
+        btnOpen.className = 'px-3 py-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white flex items-center space-x-1.5 transition-all';
+        contentClosed.classList.remove('hidden');
+        contentOpen.classList.add('hidden');
       }
     }
 

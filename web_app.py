@@ -53,6 +53,7 @@ class BotManager:
         self.last_tick: Optional[Dict[str, Any]] = None
         self.account_info: Optional[Dict[str, Any]] = None
         self.positions_list: List[Dict[str, Any]] = []
+        self.closed_positions_list: List[Dict[str, Any]] = []
         self.available_symbols: List[str] = []
         self.last_tick_msc: int = -1
         self.last_tick_arrival: float = 0.0
@@ -159,6 +160,32 @@ class BotManager:
                     "origin": "B" if is_bot else "U",
                 })
             self.positions_list = pos_data
+
+            # Fetch closed deals / trades for past 24 hours
+            now_dt = dt.datetime.now()
+            start_dt = now_dt - dt.timedelta(days=1)
+            deals = mt5.history_deals_get(start_dt, now_dt) or ()
+            ins = {d.position_id: d for d in deals if d.entry == 0}
+            outs = [d for d in deals if d.entry == 1]
+            closed_data = []
+            for out in reversed(outs):
+                in_d = ins.get(out.position_id)
+                pos_type = "BUY" if in_d and in_d.type == 0 else ("SELL" if in_d and in_d.type == 1 else ("BUY" if out.type == 1 else "SELL"))
+                open_p = float(in_d.price) if in_d else 0.0
+                is_b = bool(out.magic in magics or out.magic > 0)
+                closed_data.append({
+                    "ticket": out.position_id,
+                    "type": pos_type,
+                    "volume": float(out.volume),
+                    "price_open": open_p,
+                    "price_close": float(out.price),
+                    "profit": round(float(out.profit + out.swap + out.commission), 2),
+                    "time": dt.datetime.fromtimestamp(out.time).strftime("%H:%M:%S"),
+                    "magic": out.magic,
+                    "is_bot": is_b,
+                    "origin": "B" if is_b else "U",
+                })
+            self.closed_positions_list = closed_data
 
         except Exception as e:
             self.error_msg = str(e)
@@ -419,6 +446,7 @@ class BotManager:
             "market": self.last_tick,
             "bot": bot_data,
             "positions": self.positions_list,
+            "closed_positions": self.closed_positions_list,
             "events": list(self.events),
             "pnl_history": list(self.pnl_history),
             "config": cfg_dict,
