@@ -69,7 +69,7 @@ class Cfg:
     break_time: bool = False             # True: finish open trades, but block new initial entries
     min_free_margin: float = 10.0        # Min free margin ($) required before allowing a new entry
     margin_buffer_pct: float = 20.0      # Required free margin safety buffer % over required margin
-    min_margin_level: float = 200.0      # Min account margin level % required to allow opening trades
+    min_margin_level: float = 0.0        # Min account margin level % required (0 = disabled, 100-200 optional)
     enable_log: bool = True
     log_file: str = "up_down_tracker_decisions_py.csv"   # separate from the EA's CSV
 
@@ -81,7 +81,7 @@ class Bot:
         s.status = "Initializing..."; s.basket = 0.0; s.last_exit = 0; s.open_time = 0; s.ma = 0.0
         s.daily = 0.0; s.deals = 0; s.nopen = 0; s.tp_price = 0.0; s.dir = 0
         s.peak = 0.0; s.trail_stop = 0.0; s.flip = 0; s.exposure = 0.0
-        s.dist_ma = 0.0; s.rsi = 50.0; s.margin_cooldown_until = 0
+        s.dist_ma = 0.0; s.rsi = 50.0; s.margin_cooldown_until = 0; s.last_order_error = ""
         s.events = []
 
     # ---- CSV decision log ----
@@ -191,12 +191,16 @@ class Bot:
                 s.log("CLOSE", "-", "scalp-tp", bid, total, total); s.close_all(); return
             if s.nopen < c.grid_max_legs and total <= -(s.nopen * c.grid_step_loss):
                 if tc < s.margin_cooldown_until:
-                    s.status = f"GRID WAIT MARGIN ({s.margin_cooldown_until - tc}s)"; return
+                    rem = s.margin_cooldown_until - tc
+                    err_msg = f": {s.last_order_error}" if s.last_order_error else ""
+                    s.status = f"GRID WAIT MARGIN ({rem}s{err_msg})"; return
                 ok, rc = s.br.order(1 if has_buy else -1)
                 side = "BUY" if has_buy else "SELL"
                 if ok:
+                    s.last_order_error = ""
                     s.log("ENTRY", side, "grid-add", bid, total, 0.0)
                 else:
+                    s.last_order_error = str(rc)
                     s.log("SKIP", side, f"grid-add-failed rc={rc}", bid, total, 0.0)
                     s.margin_cooldown_until = tc + 60
                     s.status = f"GRID MARGIN GUARD: {rc}"
@@ -214,7 +218,9 @@ class Bot:
         # 4. NEW ENTRY SIGNAL
         if s.nopen == 0:
             if tc < s.margin_cooldown_until:
-                s.status = f"MARGIN COOLDOWN {s.margin_cooldown_until - tc}s"; return
+                rem = s.margin_cooldown_until - tc
+                err_msg = f": {s.last_order_error}" if s.last_order_error else ""
+                s.status = f"MARGIN COOLDOWN {rem}s{err_msg}"; return
             if c.break_time: s.status = "☕ BREAK TIME (Tracking, no entries)"; s.flip = 0; return
             if s.daily >= c.daily_goal: s.status = "GOAL REACHED"; s.flip = 0; return
             if s.flip != 0 and not s.allowed(s.flip): s.flip = 0
@@ -222,8 +228,10 @@ class Bot:
                 fd, s.flip = s.flip, 0
                 ok, rc = s.br.order(fd); fs = "BUY" if fd > 0 else "SELL"
                 if ok:
+                    s.last_order_error = ""
                     s.log("ENTRY", fs, "flip-reversal", bid, 0.0, 0.0)
                 else:
+                    s.last_order_error = str(rc)
                     s.log("SKIP", fs, f"flip-failed rc={rc}", bid, 0.0, 0.0)
                     s.last_exit = tc
                     s.margin_cooldown_until = tc + 60
@@ -263,8 +271,10 @@ class Bot:
                     if not ago or (s.ma - ago) * d <= 0: s.status = f"WAIT SLOPE {'BUY' if d > 0 else 'SELL'}"; return
                 ok, rc = s.br.order(d); side = "BUY" if d > 0 else "SELL"
                 if ok:
+                    s.last_order_error = ""
                     s.log("ENTRY", side, "ma-signal", bid, 0.0, 0.0)
                 else:
+                    s.last_order_error = str(rc)
                     s.log("SKIP", side, f"ma-signal-failed rc={rc}", bid, 0.0, 0.0)
                     s.last_exit = tc
                     s.margin_cooldown_until = tc + 60
@@ -343,14 +353,20 @@ class MT5Broker:
         if not mt5.initialize(**kw):
             raise RuntimeError(f"MT5 initialize failed: {mt5.last_error()} "
                                f"(.env keys used: {sorted(k for k in kw if k != 'password')}; is MT5 installed and are login/server right?)")
-        if mt5.symbol_select(cfg.symbol, True) and mt5.symbol_info(cfg.symbol) is not None:
-            pass
+        sym_clean = str(cfg.symbol).strip().upper()
+        if mt5.symbol_select(sym_clean, True) and mt5.symbol_info(sym_clean) is not None:
+            cfg.symbol = sym_clean
         else:
-            for sym in dict.fromkeys(["XAUUSD", "GOLD", "XAUUSD.a", "XAUUSDm", "XAUUSD."]):
-                if mt5.symbol_select(sym, True) and mt5.symbol_info(sym) is not None:
-                    print(f"symbol '{cfg.symbol}' not found, falling back to {sym}")
-                    cfg.symbol = sym; break
-            else: raise RuntimeError(f"symbol '{cfg.symbol}' not found; ensure it is added in MT5 Market Watch")
+            base = sym_clean.split(".")[0].rstrip("m").rstrip("+")
+            candidates = [sym_clean, sym_clean + "+", sym_clean + ".a", sym_clean + "m", sym_clean + ".",
+                          base, base + "+", base + ".a", base + "m", base + ".",
+                          "XAUUSD", "GOLD", "XAUUSD.a", "XAUUSDm", "XAUUSD."]
+            for s_cand in dict.fromkeys(candidates):
+                if mt5.symbol_select(s_cand, True) and mt5.symbol_info(s_cand) is not None:
+                    print(f"symbol '{cfg.symbol}' auto-resolved to '{s_cand}' in MT5")
+                    cfg.symbol = s_cand; break
+            else:
+                raise RuntimeError(f"symbol '{cfg.symbol}' not found in MT5 Market Watch")
         s.tf = getattr(mt5, "TIMEFRAME_" + cfg.tf.upper())
         s.magics = {cfg.magic, cfg.magic_recovery}
 
@@ -403,8 +419,11 @@ class MT5Broker:
 
     def _fill(s):
         i = s.mt5.symbol_info(s.c.symbol); m = s.mt5
-        if i is None: return m.ORDER_FILLING_RETURN
-        return {1: m.ORDER_FILLING_FOK, 2: m.ORDER_FILLING_IOC}.get(i.filling_mode & 3, m.ORDER_FILLING_RETURN)
+        if i is None: return m.ORDER_FILLING_IOC
+        fm = getattr(i, "filling_mode", 0)
+        if fm & 2: return m.ORDER_FILLING_IOC
+        if fm & 1: return m.ORDER_FILLING_FOK
+        return m.ORDER_FILLING_RETURN
 
     def check_margin(s, d, lots=None):
         m = s.mt5
@@ -421,7 +440,9 @@ class MT5Broker:
         needed = m.order_calc_margin(order_type, s.c.symbol, vol, price)
         if needed is None or needed <= 0:
             lev = acc.leverage if acc.leverage > 0 else 100
-            needed = (vol * 100.0 * price) / lev
+            sym_info = m.symbol_info(s.c.symbol)
+            cs = sym_info.trade_contract_size if sym_info and sym_info.trade_contract_size > 0 else (100000.0 if ("USD" in s.c.symbol and "XAU" not in s.c.symbol and "GOLD" not in s.c.symbol) else 100.0)
+            needed = (vol * cs * price) / lev
         needed = float(needed)
 
         # 1. Absolute free margin floor
@@ -433,7 +454,7 @@ class MT5Broker:
         if free < req_with_buf:
             return False, f"FREE MARGIN ${free:.2f} < REQUIRED ${req_with_buf:.2f} (needed ${needed:.2f} + {s.c.margin_buffer_pct:.0f}% buffer)"
 
-        # 3. Account margin level check
+        # 3. Account margin level check (Only if min_margin_level > 0 and account already has open positions)
         if acc.margin > 0 and acc.margin_level > 0 and s.c.min_margin_level > 0:
             if acc.margin_level < s.c.min_margin_level:
                 return False, f"MARGIN LEVEL {acc.margin_level:.1f}% < MIN {s.c.min_margin_level:.0f}%"
@@ -449,10 +470,38 @@ class MT5Broker:
         if t is None or t.ask <= 0 or t.bid <= 0:
             return False, "NO_TICK"
         price = t.ask if d > 0 else t.bid
-        r = m.order_send(dict(action=m.TRADE_ACTION_DEAL, symbol=s.c.symbol, volume=s.c.lots,
-                              type=m.ORDER_TYPE_BUY if d > 0 else m.ORDER_TYPE_SELL, price=price,
-                              deviation=50, magic=s.c.magic, comment="udt-py", type_time=m.ORDER_TIME_GTC, type_filling=s._fill()))
-        return (r is not None and r.retcode == m.TRADE_RETCODE_DONE), (r.retcode if r else m.last_error())
+
+        # Try best fill mode, and auto-retry if 10030 (TRADE_RETCODE_INVALID_FILL)
+        fill_modes = [s._fill()]
+        for f in [m.ORDER_FILLING_IOC, m.ORDER_FILLING_FOK, m.ORDER_FILLING_RETURN]:
+            if f not in fill_modes:
+                fill_modes.append(f)
+
+        last_r = None
+        for fill in fill_modes:
+            req = dict(
+                action=m.TRADE_ACTION_DEAL,
+                symbol=s.c.symbol,
+                volume=s.c.lots,
+                type=m.ORDER_TYPE_BUY if d > 0 else m.ORDER_TYPE_SELL,
+                price=price,
+                deviation=50,
+                magic=s.c.magic,
+                comment="udt-py",
+                type_time=m.ORDER_TIME_GTC,
+                type_filling=fill,
+            )
+            r = m.order_send(req)
+            last_r = r
+            if r is not None and r.retcode == m.TRADE_RETCODE_DONE:
+                return True, m.TRADE_RETCODE_DONE
+            if r is not None and r.retcode != 10030:
+                break
+
+        rc = last_r.retcode if last_r else m.last_error()
+        comment = getattr(last_r, "comment", "") if last_r else ""
+        err_msg = f"{rc} ({comment})" if comment else str(rc)
+        return False, err_msg
 
     def close(s, p):
         m = s.mt5; t = m.symbol_info_tick(s.c.symbol); buy = p.dir > 0

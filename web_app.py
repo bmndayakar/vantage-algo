@@ -661,6 +661,9 @@ class BotManager:
 
                 if self.bot:
                     self.bot.c = self.cfg
+                    # Clear stale margin cooldown so new settings apply immediately
+                    self.bot.margin_cooldown_until = 0
+                    self.bot.last_order_error = ""
                 return {"status": "ok", "message": "Configuration updated successfully."}
             except Exception as e:
                 return {"status": "error", "message": f"Failed to update config: {e}"}
