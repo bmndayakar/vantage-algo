@@ -170,3 +170,4 @@ Never bypass `check_margin()` or remove `margin_cooldown_until`. Doing so risks 
 
 ### Rule 4: Small Account Safety Defaults
 When testing or assisting the user, never advise setting `grid_max_legs > 2` or `lots > 0.01` on accounts with balance $< \$200$. Always pair grid averaging with an `Emergency Grid SL` of \$15.00–\$20.00.
+
