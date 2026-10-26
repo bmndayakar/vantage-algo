@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vantage Multi-Asset Bot Dashboard</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: { 500: '#EAB308', 600: '#CA8A04' }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .pulse-dot { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
+    .flash-up { animation: flashGreen 0.6s ease-out; }
+    .flash-down { animation: flashRed 0.6s ease-out; }
+    @keyframes flashGreen { from { background-color: rgba(16, 185, 129, 0.25); } to { background-color: transparent; } }
+    @keyframes flashRed { from { background-color: rgba(239, 68, 68, 0.25); } to { background-color: transparent; } }
+    /* Custom Scrollbar for Terminal */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.05); }
+    .dark ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 3px; }
+    .dark ::-webkit-scrollbar-thumb { background: #334155; }
+    ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+  </style>
+</head>
+<body class="bg-slate-100 dark:bg-[#0b1120] text-slate-800 dark:text-slate-100 min-h-screen flex flex-col antialiased transition-colors duration-200">
+
+  <!-- TOP NAVIGATION BAR -->
+  <header class="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-6 py-3.5 sticky top-0 z-40 shadow-sm transition-colors duration-200">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+      
+      <!-- LOGO & TITLE -->
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-500 dark:text-amber-400 font-bold text-lg shadow-inner">
+          ✦
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <h1 class="text-lg font-bold tracking-tight text-slate-900 dark:text-white">VANTAGE ALGO</h1>
+            <span id="badge-active-symbol" class="text-xs px-2 py-0.5 rounded bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-semibold uppercase tracking-wider">XAUUSD</span>
+          </div>
+          <p class="text-xs text-slate-500 dark:text-slate-400">MA-250 Trend &bull; Loss Grid &bull; Profit-Peak Trailing Exit</p>
+        </div>
+      </div>
+
+      <!-- STATUS BADGES -->
+      <div class="flex items-center space-x-2 sm:space-x-3 text-xs">
+        <!-- MT5 Status -->
+        <div id="badge-mt5" class="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+          <span id="dot-mt5" class="w-2.5 h-2.5 rounded-full bg-slate-400 dark:bg-slate-500"></span>
+          <span id="txt-mt5" class="font-medium text-slate-700 dark:text-slate-300">Checking MT5...</span>
+        </div>
+
+        <!-- Account Badge -->
+        <div id="badge-acc" class="hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-mono">
+          <span id="txt-acc-num">#---</span>
+          <span id="txt-acc-type" class="px-1.5 py-0.5 rounded text-[10px] bg-slate-200 dark:bg-slate-700 font-bold">DEMO</span>
+        </div>
+
+        <!-- Algo Trading Badge -->
+        <div id="badge-algo" class="hidden md:flex items-center px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400">
+          Algo Trading: <span id="txt-algo" class="ml-1 font-semibold text-slate-700 dark:text-slate-300">---</span>
+        </div>
+
+        <!-- Market Live Badge -->
+        <div id="badge-market" class="hidden sm:flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs">
+          <span id="dot-market" class="w-2.5 h-2.5 rounded-full bg-slate-400 dark:bg-slate-500"></span>
+          <span id="txt-market" class="font-semibold text-slate-600 dark:text-slate-300">Market: Checking...</span>
+        </div>
+
+        <!-- Login Trigger Button (visible if no active login) -->
+        <button id="btn-open-login" onclick="openLoginModal()" class="hidden items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-semibold cursor-pointer transition">
+          <span>🔑</span>
+          <span>Login to MT5</span>
+        </button>
+      </div>
+
+      <!-- TOP CONTROL ACTIONS -->
+      <div class="flex items-center space-x-2 sm:space-x-3">
+        <!-- Light / Dark Mode Toggle Button -->
+        <button onclick="toggleTheme()" id="btn-theme-toggle" class="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition" title="Toggle Light / Dark Mode">
+          <span id="icon-theme">🌙</span>
+        </button>
+
+        <!-- Allow Real Checkbox -->
+        <label class="flex items-center space-x-1.5 text-xs text-slate-700 dark:text-slate-300 cursor-pointer bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/80 dark:hover:bg-slate-800 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700">
+          <input type="checkbox" id="chk-allow-real" class="w-4 h-4 rounded bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-amber-500 focus:ring-amber-500">
+          <span class="font-medium">Allow Real</span>
+        </label>
+
+        <!-- Start / Stop Toggle -->
+        <button id="btn-toggle-bot" onclick="toggleBot()" class="px-4 sm:px-5 py-2 rounded-lg font-semibold text-sm shadow transition-all duration-150 flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-500 text-white">
+          <span id="icon-bot">▶</span>
+          <span id="lbl-bot">START BOT</span>
+        </button>
+
+        <!-- Emergency Close All Button -->
+        <button onclick="confirmCloseAll()" class="px-3 py-2 rounded-lg font-semibold text-sm bg-rose-50 hover:bg-rose-100 dark:bg-rose-600/20 dark:hover:bg-rose-600/30 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30 transition flex items-center space-x-1" title="Emergency Close All Open Positions">
+          <span>⚠️</span>
+          <span class="hidden sm:inline">Close All</span>
+        </button>
+
+        <!-- Settings Button -->
+        <button onclick="openConfigModal()" class="p-2 rounded-lg bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700" title="Bot Parameters">
+          ⚙️
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- MAIN CONTAINER -->
+  <main class="max-w-7xl mx-auto p-4 sm:p-6 flex-1 w-full space-y-6">
+
+    <!-- CRITICAL ALERTS / WARNINGS -->
+    <div id="box-alert" class="hidden px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 text-amber-800 dark:text-amber-300 text-sm flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <span class="text-xl">⚠️</span>
+        <span id="txt-alert-msg">Notice message</span>
+      </div>
+      <button onclick="dismissAlert()" class="text-amber-600 dark:text-amber-400 hover:opacity-75">&times;</button>
+    </div>
+
+    <!-- ROW 1: PRIMARY METRIC CARDS -->
+    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+      
+      <!-- CARD 1: MARKET PRICE & MA -->
+      <div id="card-price" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm relative overflow-hidden transition-all duration-300">
+        <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
+          <div class="flex items-center space-x-1">
+            <span class="text-xs text-amber-500">⚡</span>
+            <select id="select-symbol" onchange="onSymbolChange(this.value)" class="bg-transparent font-bold text-slate-900 dark:text-white border-b border-dashed border-slate-300 dark:border-slate-700 py-0.5 pr-1 focus:outline-none cursor-pointer text-sm font-mono hover:border-amber-500 transition">
+              <option value="XAUUSD">XAUUSD</option>
+            </select>
+          </div>
+          <div class="flex items-center space-x-1.5">
+            <span id="badge-market-tag" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700">CLOSED</span>
+            <span id="badge-trend" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">---</span>
+          </div>
+        </div>
+        <div class="text-2xl font-bold font-mono tracking-tight text-slate-900 dark:text-white mb-1" id="txt-bid">0.00</div>
+        <div class="text-xs text-slate-500 dark:text-slate-400 flex justify-between">
+          <span>Ask: <span id="txt-ask" class="font-mono text-slate-700 dark:text-slate-300">0.00</span></span>
+          <span>Spread: <span id="txt-spread" class="font-mono text-amber-600 dark:text-amber-400 font-semibold">0.00</span></span>
+        </div>
+        <div class="text-[11px] text-slate-400 dark:text-slate-500 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-between">
+          <span>MA-250:</span>
+          <span id="txt-ma" class="font-mono text-slate-700 dark:text-slate-300">---</span>
+        </div>
+      </div>
+
+      <!-- CARD 2: BASKET FLOATING P&L -->
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm relative overflow-hidden transition-colors">
+        <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
+          <span class="font-medium">Basket Floating P&L</span>
+          <span class="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500">Open Legs</span>
+        </div>
+        <div class="text-3xl font-extrabold font-mono tracking-tight" id="txt-basket-pnl">$0.00</div>
+        <div class="text-xs text-slate-500 dark:text-slate-400 mt-1 flex justify-between">
+          <span>TP Target:</span>
+          <span id="txt-tp-price" class="font-mono text-slate-700 dark:text-slate-300">---</span>
+        </div>
+        <div class="text-[11px] text-slate-400 dark:text-slate-500 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-between">
+          <span>Status:</span>
+          <span id="txt-bot-status" class="font-semibold text-amber-600 dark:text-amber-400 truncate max-w-[110px]">IDLE</span>
+        </div>
+      </div>
+
+      <!-- CARD 3: GRID LEGS & EXPOSURE -->
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm transition-colors">
+        <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
+          <span class="font-medium">Grid Stack</span>
+          <span id="txt-legs-count" class="font-bold text-slate-800 dark:text-slate-200">0 / 5 Legs</span>
+        </div>
+        <!-- Dots visualizer for 5 legs -->
+        <div class="flex space-x-1.5 my-3" id="legs-dots">
+          <div class="h-2 flex-1 rounded-full bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700"></div>
+          <div class="h-2 flex-1 rounded-full bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700"></div>
+          <div class="h-2 flex-1 rounded-full bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700"></div>
+          <div class="h-2 flex-1 rounded-full bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700"></div>
+          <div class="h-2 flex-1 rounded-full bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700"></div>
+        </div>
+        <div class="text-xs text-slate-500 dark:text-slate-400 flex justify-between mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <span>Exposure:</span>
+          <span id="txt-exposure" class="font-mono text-slate-700 dark:text-slate-300">0.0%</span>
+        </div>
+      </div>
+
+      <!-- CARD 4: TRAILING STOP STATUS -->
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm transition-colors">
+        <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
+          <span class="font-medium">Profit-Peak Trail</span>
+          <span id="txt-trail-on" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">ACTIVE</span>
+        </div>
+        <div class="text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1" id="txt-peak">Peak: $0.00</div>
+        <div class="text-xs font-mono text-slate-700 dark:text-slate-300 mt-1" id="txt-trail-stop">Lock: $0.00</div>
+        <div class="text-[11px] text-slate-400 dark:text-slate-500 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-between">
+          <span>Arm threshold:</span>
+          <span id="txt-trail-arm" class="font-mono text-slate-700 dark:text-slate-300">$1.00</span>
+        </div>
+      </div>
+
+      <!-- CARD 5: DAILY GOAL PROGRESS -->
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm col-span-2 md:col-span-2 transition-colors">
+        <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
+          <span class="font-medium">Daily Profit Progress</span>
+          <span id="txt-deals-count" class="text-slate-500 dark:text-slate-400">0 Deals Closed</span>
+        </div>
+        <div class="flex items-baseline justify-between my-1">
+          <span class="text-2xl font-bold font-mono" id="txt-daily-profit">$0.00</span>
+          <span class="text-xs text-slate-500 dark:text-slate-400 font-mono">Goal: <span id="txt-daily-goal" class="text-slate-800 dark:text-slate-200 font-semibold">$20.00</span></span>
+        </div>
+        <!-- Progress Bar -->
+        <div class="w-full bg-slate-200 dark:bg-slate-800 h-2.5 rounded-full overflow-hidden mt-2">
+          <div id="bar-daily-progress" class="bg-gradient-to-r from-amber-500 to-emerald-500 h-full w-0 transition-all duration-500"></div>
+        </div>
+        <div class="text-[11px] text-slate-400 dark:text-slate-500 mt-2 pt-1 flex justify-between">
+          <span>Completion: <span id="txt-daily-pct" class="font-semibold text-slate-700 dark:text-slate-300">0%</span></span>
+          <span id="txt-goal-status" class="text-slate-500 dark:text-slate-400">Trading in progress</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ROW 2: CHART & OPEN POSITIONS -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      
+      <!-- P&L / EQUITY CURVE CHART (2 Cols) -->
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm lg:col-span-2 flex flex-col transition-colors">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center space-x-2">
+            <span class="text-base font-bold text-slate-900 dark:text-white">Session P&L Trajectory</span>
+            <span id="badge-chart-status" class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700">PAUSED (BOT IDLE)</span>
+          </div>
+          <div class="text-xs font-mono text-slate-500 dark:text-slate-400">
+            Account Equity: <span id="txt-equity" class="text-emerald-600 dark:text-emerald-400 font-bold">$0.00</span>
+          </div>
+        </div>
+        <div class="relative flex-1 min-h-[260px] w-full">
+          <canvas id="pnlChart"></canvas>
+        </div>
+      </div>
+
+      <!-- OPEN POSITIONS TABLE (1 Col) -->
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm flex flex-col transition-colors">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center space-x-2">
+            <span class="text-base font-bold text-slate-900 dark:text-white">Open Positions</span>
+            <span id="badge-open-count" class="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-amber-600 dark:text-amber-400">0</span>
+          </div>
+          <span class="text-xs text-slate-400 dark:text-slate-500">Auto-managed</span>
+        </div>
+
+        <div class="flex-1 overflow-y-auto max-h-[260px]">
+          <table class="w-full text-left text-xs">
+            <thead class="text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 sticky top-0 border-b border-slate-200 dark:border-slate-800">
+              <tr>
+                <th class="p-2 font-medium">Type</th>
+                <th class="p-2 font-medium">Lots</th>
+                <th class="p-2 font-medium">Entry</th>
+                <th class="p-2 font-medium text-right">P&L ($)</th>
+              </tr>
+            </thead>
+            <tbody id="tbl-positions" class="divide-y divide-slate-100 dark:divide-slate-800/60 font-mono">
+              <tr>
+                <td colspan="4" class="p-8 text-center text-slate-400 dark:text-slate-500 font-sans">No open positions</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ROW 3: DECISION LOG & AUDIT FEED -->
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm transition-colors">
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center space-x-2">
+          <span class="text-base font-bold text-slate-900 dark:text-white">Live Trading Engine Feed</span>
+          <span class="w-2 h-2 rounded-full bg-emerald-500 pulse-dot"></span>
+        </div>
+        <span class="text-xs text-slate-400 font-mono">Recorded in CSV &bull; Streaming</span>
+      </div>
+
+      <!-- Terminal Output Window -->
+      <div id="log-terminal" class="bg-slate-950 border border-slate-800 dark:border-slate-800 rounded-xl p-3.5 font-mono text-xs text-slate-300 h-48 overflow-y-auto space-y-1.5 shadow-inner">
+        <div class="text-slate-500">[System] Initializing Vantage Multi-Asset Bot UI...</div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- PARAMETER SETTINGS MODAL -->
+  <div id="modal-config" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/75 backdrop-blur-sm p-4">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl max-w-xl w-full p-6 shadow-2xl relative">
+      <div class="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+        <div>
+          <h2 class="text-lg font-bold text-slate-900 dark:text-white">Bot Configuration</h2>
+          <p class="text-xs text-slate-500 dark:text-slate-400">Live tweak parameters (takes effect on running bot immediately)</p>
+        </div>
+        <button onclick="closeConfigModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-white text-2xl leading-none">&times;</button>
+      </div>
+
+      <form id="form-config" onsubmit="saveConfig(event)" class="mt-4 grid grid-cols-2 gap-4 text-xs">
+        <div>
+          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Trading Symbol</label>
+          <select id="cfg-symbol" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white font-mono">
+            <option value="XAUUSD">XAUUSD</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Lot Size</label>
+          <input type="number" step="0.01" id="cfg-lots" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
+        </div>
+
+        <div>
+          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Daily Profit Goal ($)</label>
+          <input type="number" step="1.0" id="cfg-daily_goal" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
+        </div>
+        <div>
+          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">MA Period</label>
+          <input type="number" id="cfg-ma_period" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
+        </div>
+
+        <div>
+          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Grid Max Legs</label>
+          <input type="number" id="cfg-grid_max_legs" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
+        </div>
+        <div>
+          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Grid Step Loss ($)</label>
+          <input type="number" step="0.5" id="cfg-grid_step_loss" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
+        </div>
+
+        <div>
+          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Trail Arm ($)</label>
+          <input type="number" step="0.1" id="cfg-trail_arm" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
+        </div>
+        <div>
+          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Trail Giveback Frac</label>
+          <input type="number" step="0.05" id="cfg-trail_give_frac" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
+        </div>
+
+        <div>
+          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Soft Cap (Minutes)</label>
+          <input type="number" id="cfg-soft_cap_min" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
+        </div>
+        <div>
+          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Emergency Grid SL ($)</label>
+          <input type="number" step="1.0" id="cfg-grid_sl" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
+        </div>
+
+        <div class="col-span-2">
+          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Max Spread Guard ($)</label>
+          <input type="number" step="0.1" id="cfg-max_spread" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="e.g. 1.0 (0=Off)">
+        </div>
+
+        <div class="col-span-2 pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end space-x-3">
+          <button type="button" onclick="closeConfigModal()" class="px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300">Cancel</button>
+          <button type="submit" class="px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 font-semibold text-slate-900 shadow">Save & Apply</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MT5 LOGIN MODAL -->
+  <div id="modal-login" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/75 backdrop-blur-sm p-4">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+      <div class="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-500 text-lg">
+            🔑
+          </div>
+          <div>
+            <h2 class="text-lg font-bold text-slate-900 dark:text-white">MetaTrader 5 Login</h2>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Connect & auto-launch your MT5 terminal</p>
+          </div>
+        </div>
+        <button onclick="closeLoginModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-white text-2xl leading-none">&times;</button>
+      </div>
+
+      <!-- Error / Notice Box -->
+      <div id="login-alert" class="hidden my-3 px-3.5 py-2.5 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 text-rose-700 dark:text-rose-300 text-xs flex items-center space-x-2">
+        <span>⚠️</span>
+        <span id="login-alert-text">Error message</span>
+      </div>
+
+      <form id="form-login" onsubmit="submitMT5Login(event)" class="mt-4 space-y-3.5 text-xs">
+        <div>
+          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">MT5 Account Number (Login)</label>
+          <input type="number" id="login-acc" required placeholder="e.g. 12345678" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white font-mono focus:ring-2 focus:ring-amber-500 outline-none">
+        </div>
+
+        <div>
+          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Trading Password</label>
+          <div class="relative">
+            <input type="password" id="login-pass" required placeholder="••••••••••••" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 pr-10 text-slate-900 dark:text-white font-mono focus:ring-2 focus:ring-amber-500 outline-none">
+            <button type="button" onclick="togglePassVisibility()" class="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 dark:hover:text-white text-sm" title="Show/Hide Password">👁️</button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Broker Server Name</label>
+          <input type="text" id="login-server" required placeholder="e.g. VantageFX-Live or Vantage-Demo" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white font-mono focus:ring-2 focus:ring-amber-500 outline-none">
+          <p class="text-[11px] text-slate-400 dark:text-slate-500 mt-1">Found in MT5 via File &rarr; Login to Trade Account &rarr; Server.</p>
+        </div>
+
+        <details class="text-slate-500 dark:text-slate-400 pt-1">
+          <summary class="cursor-pointer text-[11px] font-medium hover:text-slate-700 dark:hover:text-slate-300">Advanced: MT5 Terminal Path</summary>
+          <div class="mt-2">
+            <input type="text" id="login-path" value="C:\Program Files\MetaTrader 5\terminal64.exe" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-[11px] text-slate-700 dark:text-slate-300 font-mono">
+          </div>
+        </details>
+
+        <div class="pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-end space-x-3">
+          <button type="button" onclick="closeLoginModal()" class="px-4 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300">Cancel</button>
+          <button type="submit" id="btn-login-submit" class="px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 font-semibold text-slate-900 shadow flex items-center space-x-2">
+            <span id="txt-login-btn">Connect & Save</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- SCRIPT LOGIC -->
+  <script>
+    let ws = null;
+    let isRunning = false;
+    let lastBid = 0;
+    let chart = null;
+    let chartData = { labels: [], datasets: [{ label: 'Basket Floating P&L ($)', data: [], borderColor: '#10B981', backgroundColor: 'rgba(16, 185, 129, 0.1)', fill: true, tension: 0.3 }] };
+    let loginPrompted = false;
+
+    // Theme Management (Light by default)
+    function initTheme() {
+      const savedTheme = localStorage.getItem('theme');
+      if (savedTheme === 'dark') {
+        document.documentElement.classList.add('dark');
+        document.getElementById('icon-theme').innerText = '☀️';
+      } else {
+        document.documentElement.classList.remove('dark');
+        document.getElementById('icon-theme').innerText = '🌙';
+      }
+    }
+
+    function toggleTheme() {
+      const isDark = document.documentElement.classList.toggle('dark');
+      localStorage.setItem('theme', isDark ? 'dark' : 'light');
+      document.getElementById('icon-theme').innerText = isDark ? '☀️' : '🌙';
+      updateChartColors(isDark);
+    }
+
+    function updateChartColors(isDark) {
+      if (!chart) return;
+      const gridColor = isDark ? '#1e293b' : '#e2e8f0';
+      const tickColor = isDark ? '#64748b' : '#94a3b8';
+      chart.options.scales.x.grid.color = gridColor;
+      chart.options.scales.y.grid.color = gridColor;
+      chart.options.scales.x.ticks.color = tickColor;
+      chart.options.scales.y.ticks.color = tickColor;
+      chart.update();
+    }
+
+    // Initialize Chart
+    function initChart() {
+      const isDark = document.documentElement.classList.contains('dark');
+      const gridColor = isDark ? '#1e293b' : '#e2e8f0';
+      const tickColor = isDark ? '#64748b' : '#94a3b8';
+
+      const ctx = document.getElementById('pnlChart').getContext('2d');
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: chartData,
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { color: gridColor }, ticks: { color: tickColor, font: { size: 10 } } },
+            y: { grid: { color: gridColor }, ticks: { color: tickColor, font: { size: 10 }, callback: v => '$' + v } }
+          }
+        }
+      });
+    }
+
+    // Connect WebSocket
+    function connectWS() {
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${proto}//${window.location.host}/ws`;
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        console.log('Connected to Bot Server WS');
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const state = JSON.parse(event.data);
+          updateUI(state);
+        } catch (e) {
+          console.error('State parse error:', e);
+        }
+      };
+
+      ws.onclose = () => {
+        console.log('WS disconnected, reconnecting in 2s...');
+        document.getElementById('dot-mt5').className = 'w-2.5 h-2.5 rounded-full bg-rose-500';
+        document.getElementById('txt-mt5').innerText = 'Connecting...';
+        setTimeout(connectWS, 2000);
+      };
+    }
+
+    // Update UI Elements
+    function updateUI(s) {
+      isRunning = s.is_running;
+
+      // Check if logged in
+      const hasLogin = Boolean(s.logged_in && s.account && s.account.login);
+      const btnOpenLogin = document.getElementById('btn-open-login');
+
+      if (!hasLogin) {
+        if (btnOpenLogin) btnOpenLogin.classList.remove('hidden');
+        document.getElementById('badge-mt5').className = 'flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 text-amber-700 dark:text-amber-400 cursor-pointer';
+        document.getElementById('dot-mt5').className = 'w-2.5 h-2.5 rounded-full bg-amber-500 pulse-dot';
+        document.getElementById('txt-mt5').innerText = 'No Active Login (Click to Connect)';
+        document.getElementById('badge-mt5').onclick = openLoginModal;
+
+        if (!loginPrompted) {
+          loginPrompted = true;
+          openLoginModal();
+        }
+      } else {
+        if (btnOpenLogin) btnOpenLogin.classList.add('hidden');
+        document.getElementById('badge-mt5').onclick = null;
+
+        if (s.error_msg) {
+          document.getElementById('dot-mt5').className = 'w-2.5 h-2.5 rounded-full bg-rose-500';
+          document.getElementById('txt-mt5').innerText = 'MT5 Error';
+          showAlert(s.error_msg);
+        } else {
+          document.getElementById('badge-mt5').className = 'flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700';
+          document.getElementById('dot-mt5').className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 pulse-dot';
+          document.getElementById('txt-mt5').innerText = 'MT5 Connected';
+        }
+      }
+
+      // Account Info
+      if (s.account && s.account.login) {
+        document.getElementById('badge-acc').classList.remove('hidden');
+        document.getElementById('txt-acc-num').innerText = `#${s.account.login} (${s.account.server})`;
+        const isReal = s.account.trade_mode === 'REAL';
+        const typeEl = document.getElementById('txt-acc-type');
+        typeEl.innerText = s.account.trade_mode;
+        typeEl.className = `px-1.5 py-0.5 rounded text-[10px] font-bold ${isReal ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30' : 'bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400'}`;
+
+        document.getElementById('badge-algo').classList.remove('hidden');
+        const algoEl = document.getElementById('txt-algo');
+        const isAlgoOn = Boolean(s.account.algo_trading_allowed);
+        algoEl.innerText = isAlgoOn ? 'ENABLED' : 'DISABLED';
+        algoEl.className = isAlgoOn ? 'ml-1 font-semibold text-emerald-600 dark:text-emerald-400' : 'ml-1 font-semibold text-rose-600 dark:text-rose-400';
+        document.getElementById('badge-algo').title = isAlgoOn ? 'Algo Trading is active in MT5' : 'Click the Algo Trading button in MT5 toolbar to enable';
+
+        document.getElementById('txt-equity').innerText = `$${s.account.equity.toFixed(2)}`;
+      }
+
+      // Market Live / Closed Status
+      const isLive = Boolean(s.is_market_live);
+      const dotMarket = document.getElementById('dot-market');
+      const txtMarket = document.getElementById('txt-market');
+      const tagMarket = document.getElementById('badge-market-tag');
+
+      if (isLive) {
+        if (dotMarket) dotMarket.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 pulse-dot';
+        if (txtMarket) {
+          txtMarket.innerText = 'Market: LIVE';
+          txtMarket.className = 'font-semibold text-emerald-600 dark:text-emerald-400';
+        }
+        if (tagMarket) {
+          tagMarket.innerText = 'LIVE';
+          tagMarket.className = 'px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30';
+        }
+      } else {
+        if (dotMarket) dotMarket.className = 'w-2.5 h-2.5 rounded-full bg-slate-400 dark:bg-slate-500';
+        if (txtMarket) {
+          txtMarket.innerText = 'Market: CLOSED';
+          txtMarket.className = 'font-semibold text-slate-500 dark:text-slate-400';
+        }
+        if (tagMarket) {
+          tagMarket.innerText = 'CLOSED';
+          tagMarket.className = 'px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700';
+        }
+      }
+
+      // Start / Stop Bot Button UI
+      const btn = document.getElementById('btn-toggle-bot');
+      const icon = document.getElementById('icon-bot');
+      const lbl = document.getElementById('lbl-bot');
+      if (isRunning) {
+        btn.className = 'px-4 sm:px-5 py-2 rounded-lg font-semibold text-sm shadow transition-all duration-150 flex items-center space-x-2 bg-rose-600 hover:bg-rose-500 text-white';
+        icon.innerText = '■';
+        lbl.innerText = 'STOP BOT';
+      } else {
+        btn.className = 'px-4 sm:px-5 py-2 rounded-lg font-semibold text-sm shadow transition-all duration-150 flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-500 text-white';
+        icon.innerText = '▶';
+        lbl.innerText = 'START BOT';
+      }
+
+      // Market Data
+      if (s.market) {
+        const bidEl = document.getElementById('txt-bid');
+        const cardPrice = document.getElementById('card-price');
+        if (lastBid > 0 && s.market.bid !== lastBid) {
+          cardPrice.classList.remove('flash-up', 'flash-down');
+          void cardPrice.offsetWidth;
+          cardPrice.classList.add(s.market.bid > lastBid ? 'flash-up' : 'flash-down');
+        }
+        lastBid = s.market.bid;
+
+        bidEl.innerText = s.market.bid.toFixed(2);
+        document.getElementById('txt-ask').innerText = s.market.ask.toFixed(2);
+        document.getElementById('txt-spread').innerText = `$${s.market.spread.toFixed(2)}`;
+      }
+
+      // Bot Core Metrics
+      if (s.bot) {
+        const b = s.bot;
+        document.getElementById('txt-bot-status').innerText = b.status || (isRunning ? 'RUNNING' : 'IDLE');
+        document.getElementById('txt-ma').innerText = b.ma > 0 ? b.ma.toFixed(2) : '---';
+
+        // Trend Bias
+        const trendEl = document.getElementById('badge-trend');
+        if (s.market && b.ma > 0) {
+          const bullish = s.market.bid > b.ma;
+          trendEl.innerText = bullish ? 'BULLISH' : 'BEARISH';
+          trendEl.className = `px-1.5 py-0.5 rounded text-[10px] font-bold ${bullish ? 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400'}`;
+        }
+
+        // Basket P&L Color
+        const pnlEl = document.getElementById('txt-basket-pnl');
+        pnlEl.innerText = `${b.basket >= 0 ? '+' : ''}$${b.basket.toFixed(2)}`;
+        pnlEl.className = `text-3xl font-extrabold font-mono tracking-tight ${b.basket >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`;
+
+        document.getElementById('txt-tp-price').innerText = b.tp_price > 0 ? b.tp_price.toFixed(2) : '---';
+        document.getElementById('txt-exposure').innerText = `${b.exposure.toFixed(1)}%`;
+
+        // Trailing status
+        document.getElementById('txt-peak').innerText = `Peak: $${b.peak.toFixed(2)}`;
+        document.getElementById('txt-trail-stop').innerText = `Lock: $${b.trail_stop.toFixed(2)}`;
+
+        // Grid Legs Dots
+        const maxLegs = s.config ? s.config.grid_max_legs : 5;
+        document.getElementById('txt-legs-count').innerText = `${b.nopen} / ${maxLegs} Legs`;
+        const dots = document.getElementById('legs-dots').children;
+        for (let i = 0; i < dots.length; i++) {
+          if (i < b.nopen) {
+            dots[i].className = 'h-2 flex-1 rounded-full bg-amber-500 shadow-sm';
+          } else {
+            dots[i].className = 'h-2 flex-1 rounded-full bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700';
+          }
+        }
+
+        // Daily Goal
+        const goal = s.config ? s.config.daily_goal : 20.0;
+        document.getElementById('txt-daily-profit').innerText = `${b.daily >= 0 ? '+' : ''}$${b.daily.toFixed(2)}`;
+        document.getElementById('txt-daily-goal').innerText = `$${goal.toFixed(2)}`;
+        document.getElementById('txt-deals-count').innerText = `${b.deals} Deals Closed`;
+
+        const pct = Math.min(Math.max((b.daily / goal) * 100, 0), 100);
+        document.getElementById('bar-daily-progress').style.width = `${pct}%`;
+        document.getElementById('txt-daily-pct').innerText = `${pct.toFixed(0)}%`;
+        if (b.daily >= goal) {
+          document.getElementById('txt-goal-status').innerText = '🎉 Daily Goal Achieved!';
+          document.getElementById('txt-goal-status').className = 'text-emerald-600 dark:text-emerald-400 font-semibold';
+        } else {
+          document.getElementById('txt-goal-status').innerText = 'Trading in progress';
+          document.getElementById('txt-goal-status').className = 'text-slate-400 dark:text-slate-500';
+        }
+
+        // Push live point to chart ONLY when bot is running
+        const chartBadge = document.getElementById('badge-chart-status');
+        if (s.is_running && chart && s.market) {
+          if (chartBadge) {
+            chartBadge.innerText = 'STREAMING';
+            chartBadge.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30';
+          }
+          const nowStr = new Date().toLocaleTimeString();
+          if (chartData.labels.length > 30) {
+            chartData.labels.shift();
+            chartData.datasets[0].data.shift();
+          }
+          chartData.labels.push(nowStr);
+          chartData.datasets[0].data.push(b.basket);
+          chart.update('none');
+        } else {
+          if (chartBadge) {
+            chartBadge.innerText = 'PAUSED (BOT IDLE)';
+            chartBadge.className = 'px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700';
+          }
+        }
+      }
+
+      // Positions Table
+      const tbl = document.getElementById('tbl-positions');
+      const countEl = document.getElementById('badge-open-count');
+      if (s.positions && s.positions.length > 0) {
+        countEl.innerText = s.positions.length;
+        let html = '';
+        s.positions.forEach(p => {
+          const isBuy = p.type === 'BUY';
+          const pnlColor = p.profit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400';
+          html += `
+            <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+              <td class="p-2"><span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${isBuy ? 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400'}">${p.type}</span></td>
+              <td class="p-2 text-slate-700 dark:text-slate-300">${p.volume}</td>
+              <td class="p-2 text-slate-700 dark:text-slate-300">${p.price_open.toFixed(2)}</td>
+              <td class="p-2 text-right font-bold ${pnlColor}">${p.profit >= 0 ? '+' : ''}${p.profit.toFixed(2)}</td>
+            </tr>
+          `;
+        });
+        tbl.innerHTML = html;
+      } else {
+        countEl.innerText = '0';
+        tbl.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-slate-400 dark:text-slate-500 font-sans">No open positions</td></tr>';
+      }
+
+      // Live Terminal Feed
+      if (s.events && s.events.length > 0) {
+        const term = document.getElementById('log-terminal');
+        const shouldScroll = term.scrollTop + term.clientHeight >= term.scrollHeight - 30;
+        let logHtml = '';
+        s.events.forEach(ev => {
+          let badgeColor = 'text-slate-400';
+          if (ev.event === 'ENTRY') badgeColor = 'text-emerald-400 font-bold';
+          else if (ev.event === 'CLOSE') badgeColor = 'text-amber-400 font-bold';
+          else if (ev.event === 'PANIC') badgeColor = 'text-rose-500 font-bold';
+          logHtml += `<div class="leading-relaxed"><span class="text-slate-500">${ev.time}</span> <span class="${badgeColor}">${ev.event}</span> ${ev.side || ''} ${ev.detail || ''} <span class="text-slate-400">${ev.price > 0 ? '@' + ev.price.toFixed(2) : ''}</span></div>`;
+        });
+        term.innerHTML = logHtml;
+        if (shouldScroll) term.scrollTop = term.scrollHeight;
+      }
+
+      // Populate and update Symbol Selector
+      const currentSym = s.symbol || (s.config ? s.config.symbol : 'XAUUSD');
+      const badgeSym = document.getElementById('badge-active-symbol');
+      if (badgeSym) badgeSym.innerText = currentSym;
+
+      if (s.symbols && s.symbols.length > 0) {
+        const sel1 = document.getElementById('select-symbol');
+        const sel2 = document.getElementById('cfg-symbol');
+        if (sel1 && (!sel1.dataset.loaded || sel1.options.length <= 1)) {
+          const populateSelect = (el) => {
+            if (!el) return;
+            const prev = el.value || currentSym;
+            el.innerHTML = '';
+            s.symbols.forEach(sym => {
+              const opt = document.createElement('option');
+              opt.value = sym;
+              opt.innerText = sym;
+              opt.className = 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white';
+              el.appendChild(opt);
+            });
+            el.value = prev;
+            el.dataset.loaded = 'true';
+          };
+          populateSelect(sel1);
+          populateSelect(sel2);
+        }
+        if (sel1 && sel1.value !== currentSym) sel1.value = currentSym;
+        if (sel2 && sel2.value !== currentSym) sel2.value = currentSym;
+      }
+
+      // Populate config form if empty
+      if (s.config && !document.getElementById('cfg-lots').value) {
+        for (let k in s.config) {
+          const el = document.getElementById('cfg-' + k);
+          if (el) el.value = s.config[k];
+        }
+      }
+    }
+
+    // Modal Helpers: MT5 Login
+    function openLoginModal() {
+      document.getElementById('modal-login').classList.remove('hidden');
+    }
+    function closeLoginModal() {
+      document.getElementById('modal-login').classList.add('hidden');
+    }
+    function togglePassVisibility() {
+      const p = document.getElementById('login-pass');
+      p.type = p.type === 'password' ? 'text' : 'password';
+    }
+
+    async function submitMT5Login(e) {
+      e.preventDefault();
+      const btn = document.getElementById('btn-login-submit');
+      const txt = document.getElementById('txt-login-btn');
+      const alertBox = document.getElementById('login-alert');
+      const alertText = document.getElementById('login-alert-text');
+
+      alertBox.classList.add('hidden');
+      btn.disabled = true;
+      txt.innerText = 'Connecting & Launching MT5...';
+
+      try {
+        const payload = {
+          login: document.getElementById('login-acc').value.trim(),
+          password: document.getElementById('login-pass').value.trim(),
+          server: document.getElementById('login-server').value.trim(),
+          path: document.getElementById('login-path').value.trim()
+        };
+        const res = await fetch('/api/mt5-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        const msg = data.message || data.detail || (typeof data === 'string' ? data : JSON.stringify(data));
+        if (res.ok && data.status === 'ok') {
+          closeLoginModal();
+          alert('✅ ' + (msg || 'Connected successfully!'));
+        } else {
+          alertText.innerText = msg || 'Server returned an error. Please restart run_ui.bat to load the latest backend routes.';
+          alertBox.classList.remove('hidden');
+        }
+      } catch (err) {
+        alertText.innerText = 'Request failed: ' + err;
+        alertBox.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+        txt.innerText = 'Connect & Save';
+      }
+    }
+
+    // Change Active Symbol
+    async function onSymbolChange(newSym) {
+      if (isRunning) {
+        alert('Please stop the bot before switching the trading symbol.');
+        const currentSym = document.getElementById('badge-active-symbol').innerText;
+        document.getElementById('select-symbol').value = currentSym;
+        return;
+      }
+      try {
+        const res = await fetch('/api/symbol', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbol: newSym })
+        });
+        const data = await res.json();
+        if (data.status === 'error') {
+          showAlert(data.message);
+        } else {
+          document.getElementById('badge-active-symbol').innerText = newSym;
+          if (chart) {
+            chartData.labels = [];
+            chartData.datasets[0].data = [];
+            chart.update();
+          }
+        }
+      } catch (err) {
+        console.error('Error switching symbol:', err);
+      }
+    }
+
+    // Toggle Bot (Start / Stop)
+    async function toggleBot() {
+      const allowReal = document.getElementById('chk-allow-real').checked;
+      if (!isRunning) {
+        if (chart) {
+          chartData.labels = [];
+          chartData.datasets[0].data = [];
+          chart.update();
+        }
+        const res = await fetch('/api/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ allow_real: allowReal })
+        });
+        const data = await res.json();
+        if (data.status === 'error') showAlert(data.message);
+      } else {
+        await fetch('/api/stop', { method: 'POST' });
+      }
+    }
+
+    // Emergency Close All
+    async function confirmCloseAll() {
+      if (confirm('⚠️ EMERGENCY: Are you sure you want to close ALL open positions right now?')) {
+        const res = await fetch('/api/close-all', { method: 'POST' });
+        const data = await res.json();
+        alert(data.message);
+      }
+    }
+
+    // Modal Helpers: Config
+    function openConfigModal() { document.getElementById('modal-config').classList.remove('hidden'); }
+    function closeConfigModal() { document.getElementById('modal-config').classList.add('hidden'); }
+    async function saveConfig(e) {
+      e.preventDefault();
+      const cfg = {
+        symbol: document.getElementById('cfg-symbol').value,
+        lots: parseFloat(document.getElementById('cfg-lots').value),
+        daily_goal: parseFloat(document.getElementById('cfg-daily_goal').value),
+        ma_period: parseInt(document.getElementById('cfg-ma_period').value),
+        grid_max_legs: parseInt(document.getElementById('cfg-grid_max_legs').value),
+        grid_step_loss: parseFloat(document.getElementById('cfg-grid_step_loss').value),
+        trail_arm: parseFloat(document.getElementById('cfg-trail_arm').value),
+        trail_give_frac: parseFloat(document.getElementById('cfg-trail_give_frac').value),
+        soft_cap_min: parseInt(document.getElementById('cfg-soft_cap_min').value),
+        grid_sl: parseFloat(document.getElementById('cfg-grid_sl').value),
+        max_spread: parseFloat(document.getElementById('cfg-max_spread').value) || 0.0
+      };
+      const res = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cfg)
+      });
+      const data = await res.json();
+      closeConfigModal();
+      alert(data.message);
+    }
+
+    function showAlert(msg) {
+      document.getElementById('txt-alert-msg').innerText = msg;
+      document.getElementById('box-alert').classList.remove('hidden');
+    }
+    function dismissAlert() { document.getElementById('box-alert').classList.add('hidden'); }
+
+    // Init
+    window.onload = () => {
+      initTheme();
+      initChart();
+      connectWS();
+    };
+  </script>
+</body>
+</html>
