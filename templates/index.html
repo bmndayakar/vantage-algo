@@ -262,7 +262,11 @@
             <span class="text-base font-bold text-slate-900 dark:text-white">Open Positions</span>
             <span id="badge-open-count" class="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-amber-600 dark:text-amber-400">0</span>
           </div>
-          <span class="text-xs text-slate-400 dark:text-slate-500">Auto-managed</span>
+          <span class="text-xs text-slate-400 dark:text-slate-500 flex items-center space-x-1.5 font-mono">
+            <span><span class="px-1 py-0.2 rounded text-[9px] font-extrabold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">B</span> Bot</span>
+            <span>&bull;</span>
+            <span><span class="px-1 py-0.2 rounded text-[9px] font-extrabold bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30">U</span> User</span>
+          </span>
         </div>
 
         <div class="flex-1 overflow-y-auto max-h-[260px]">
@@ -746,10 +750,18 @@
         let html = '';
         s.positions.forEach(p => {
           const isBuy = p.type === 'BUY';
+          const isBot = Boolean(p.is_bot);
           const pnlColor = p.profit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400';
+          const originBadge = isBot
+            ? `<span class="px-1 py-0.5 rounded text-[9px] font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30" title="Opened by Algo Bot">B</span>`
+            : `<span class="px-1 py-0.5 rounded text-[9px] font-bold bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30" title="Opened by User / Manual">U</span>`;
+
           html += `
             <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-              <td class="p-2"><span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${isBuy ? 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400'}">${p.type}</span></td>
+              <td class="p-2 flex items-center space-x-1.5">
+                <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${isBuy ? 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400'}">${p.type}</span>
+                ${originBadge}
+              </td>
               <td class="p-2 text-slate-700 dark:text-slate-300">${p.volume}</td>
               <td class="p-2 text-slate-700 dark:text-slate-300">${p.price_open.toFixed(2)}</td>
               <td class="p-2 text-right font-bold ${pnlColor}">${p.profit >= 0 ? '+' : ''}${p.profit.toFixed(2)}</td>

@@ -144,18 +144,20 @@ class BotManager:
             raw_pos = mt5.positions_get(symbol=sym) or ()
             pos_data = []
             for p in raw_pos:
-                if p.magic in magics:
-                    pos_data.append({
-                        "ticket": p.ticket,
-                        "type": "BUY" if p.type == mt5.POSITION_TYPE_BUY else "SELL",
-                        "volume": float(p.volume),
-                        "price_open": float(p.price_open),
-                        "price_current": float(p.price_current),
-                        "profit": round(float(p.profit), 2),
-                        "swap": round(float(p.swap), 2),
-                        "time": dt.datetime.fromtimestamp(p.time, dt.timezone.utc).strftime("%H:%M:%S"),
-                        "magic": p.magic,
-                    })
+                is_bot = p.magic in magics
+                pos_data.append({
+                    "ticket": p.ticket,
+                    "type": "BUY" if p.type == mt5.POSITION_TYPE_BUY else "SELL",
+                    "volume": float(p.volume),
+                    "price_open": float(p.price_open),
+                    "price_current": float(p.price_current),
+                    "profit": round(float(p.profit), 2),
+                    "swap": round(float(p.swap), 2),
+                    "time": dt.datetime.fromtimestamp(p.time, dt.timezone.utc).strftime("%H:%M:%S"),
+                    "magic": p.magic,
+                    "is_bot": is_bot,
+                    "origin": "B" if is_bot else "U",
+                })
             self.positions_list = pos_data
 
         except Exception as e:
@@ -395,7 +397,7 @@ class BotManager:
                 "trail_stop": 0.0,
                 "daily": 0.0,
                 "deals": 0,
-                "nopen": len(self.positions_list),
+                "nopen": len([p for p in self.positions_list if p.get("is_bot")]),
                 "tp_price": 0.0,
                 "ma": 0.0,
                 "exposure": 0.0,
