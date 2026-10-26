@@ -257,10 +257,14 @@ def compute_entry_telemetry(bid: float, ma: float, max_dist: float, side: str) -
             }
 
 
+CONFIG_FILE = os.path.join(HERE, "bot_config.json")
+
+
 class BotManager:
     def __init__(self):
         self.lock = threading.Lock()
         self.cfg = Cfg()
+        self.load_persisted_config()
         self.broker: Optional[MT5Broker] = None
         self.bot: Optional[Bot] = None
         self.is_running: bool = False
@@ -281,6 +285,36 @@ class BotManager:
         self.is_market_live: bool = False
         self.live_ma: float = 0.0
         self.live_rsi: float = 50.0
+
+    def load_persisted_config(self):
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                for k, v in data.items():
+                    if hasattr(self.cfg, k):
+                        target_type = type(getattr(self.cfg, k))
+                        if target_type is bool:
+                            val = bool(v)
+                        elif target_type is int:
+                            val = int(v)
+                        elif target_type is float:
+                            val = float(v)
+                        else:
+                            val = str(v)
+                        setattr(self.cfg, k, val)
+                logger.info(f"Loaded persisted config: symbol={self.cfg.symbol}, lots={self.cfg.lots}")
+            except Exception as e:
+                logger.error(f"Failed to load persisted config: {e}")
+
+    def save_persisted_config(self):
+        try:
+            cfg_dict = {f.name: getattr(self.cfg, f.name) for f in dataclasses.fields(Cfg)}
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(cfg_dict, f, indent=2)
+            logger.info("Saved persisted config to bot_config.json")
+        except Exception as e:
+            logger.error(f"Failed to save persisted config: {e}")
 
     def get_mt5_account_and_market(self):
         """Poll MT5 for account info, market tick, and positions without trading."""
@@ -398,7 +432,7 @@ class BotManager:
                     self.available_symbols = sym_list
 
             magics = {self.cfg.magic, self.cfg.magic_recovery}
-            raw_pos = mt5.positions_get(symbol=sym) or ()
+            raw_pos = mt5.positions_get() or ()  # Fetch ALL open positions across all symbols
             pos_data = []
             now_ts = int(time.time())
             for p in raw_pos:
@@ -407,6 +441,7 @@ class BotManager:
                 age_sec = max(0, now_ts - open_ts) if open_ts > 0 else 0
                 pos_data.append({
                     "ticket": p.ticket,
+                    "symbol": p.symbol,
                     "type": "BUY" if p.type == mt5.POSITION_TYPE_BUY else "SELL",
                     "volume": float(p.volume),
                     "price_open": float(p.price_open),
@@ -557,6 +592,7 @@ class BotManager:
                     self.bot.margin_cooldown_until = 0
                     self.bot.margin_reject_count = 0
                     self.bot.last_order_error = ""
+                self.save_persisted_config()
                 self.get_mt5_account_and_market()
                 return {"status": "ok", "message": f"Active symbol changed to {sym_clean}", "symbol": sym_clean}
             except Exception as e:
@@ -674,6 +710,7 @@ class BotManager:
                     self.bot.margin_cooldown_until = 0
                     self.bot.margin_reject_count = 0
                     self.bot.last_order_error = ""
+                self.save_persisted_config()
                 return {"status": "ok", "message": "Configuration updated successfully."}
             except Exception as e:
                 return {"status": "error", "message": f"Failed to update config: {e}"}
@@ -743,17 +780,27 @@ class BotManager:
                 "in_entry_zone": telemetry["in_entry_zone"],
             }
         else:
+            bot_pos = [p for p in self.positions_list if p.get("is_bot")]
+            n_bot = len(bot_pos)
+            bot_basket = round(sum(p.get("profit", 0.0) + p.get("swap", 0.0) for p in bot_pos), 2)
+
+            acc_eq = float(self.account_info.get("equity", 0.0)) if self.account_info else 0.0
+            acc_mg = float(self.account_info.get("margin", 0.0)) if self.account_info else 0.0
+            exposure_val = round((acc_mg / acc_eq * 100.0) if acc_eq > 0 else 0.0, 1)
+
+            status_str = f"STANDBY ({n_bot} Bot Legs Active)" if n_bot > 0 else "STOPPED"
+
             bot_data = {
-                "status": "STOPPED",
-                "basket": 0.0,
+                "status": status_str,
+                "basket": bot_basket,
                 "peak": 0.0,
                 "trail_stop": 0.0,
                 "daily": 0.0,
                 "deals": 0,
-                "nopen": len([p for p in self.positions_list if p.get("is_bot")]),
+                "nopen": n_bot,
                 "tp_price": 0.0,
                 "ma": round(ma_val, 2),
-                "exposure": 0.0,
+                "exposure": exposure_val,
                 "dist_ma": telemetry["dist_ma"],
                 "rsi": round(rsi_val, 1),
                 "max_ma_dist": telemetry["max_ma_dist"],
