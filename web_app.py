@@ -453,7 +453,7 @@ class BotManager:
                     "duration": format_duration(age_sec),
                     "magic": p.magic,
                     "is_bot": is_bot,
-                    "origin": "B" if is_bot else "U",
+                    "origin": "REC" if p.magic == self.cfg.magic_recovery else ("B" if is_bot else "U"),
                 })
             self.positions_list = pos_data
 

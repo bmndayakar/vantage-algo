@@ -70,6 +70,11 @@ class Cfg:
     bailout_target: float = 0.05         # Target profit ($) in bailout mode (0.05 = breakeven exit)
     trend_stop_dist: float = 0.0         # >0: close basket if price moves N dollars on wrong side of MA
     max_equity_risk_pct: float = 0.0     # >0: max floating basket loss allowed as % of account equity
+    loss_recycler: bool = False          # True: open small scalps on bounces to prune worst legs when grid maxes out
+    recycle_tp: float = 1.50             # Target profit ($) on recovery scalp
+    recycle_sl: float = 1.50             # Stop loss ($) on recovery scalp
+    recycle_bounce_dist: float = 0.50    # Minimum price bounce ($) from bottom before entering recovery scalp
+    recycle_cooldown_sec: int = 60       # Minimum seconds between recovery scalp entries
     break_time: bool = False             # True: finish open trades, but block new initial entries
     min_free_margin: float = 10.0        # Min free margin ($) required before allowing a new entry
     margin_buffer_pct: float = 20.0      # Required free margin safety buffer % over required margin
@@ -86,6 +91,7 @@ class Bot:
         s.daily = 0.0; s.deals = 0; s.nopen = 0; s.tp_price = 0.0; s.dir = 0
         s.peak = 0.0; s.trail_stop = 0.0; s.flip = 0; s.exposure = 0.0
         s.dist_ma = 0.0; s.rsi = 50.0; s.margin_cooldown_until = 0; s.last_order_error = ""; s.margin_reject_count = 0
+        s.last_recycle_time = 0; s.recycle_extreme = 0.0
         s.events = []
 
     # ---- CSV decision log ----
@@ -132,10 +138,14 @@ class Bot:
             if rv is not None: s.rsi = rv
         eq, mg = s.br.equity_margin(); s.exposure = (mg / eq * 100.0) if eq > 0 else 0.0
 
-        # 1. SCAN POSITIONS (EA iterates newest -> oldest; buyP/sellP keep the last leg seen)
+        # 1. SCAN POSITIONS (Separate grid stack from recovery scalps)
+        ps = s.br.positions()
+        grid_pos = [p for p in ps if p.magic == c.magic]
+        rec_pos = [p for p in ps if p.magic == c.magic_recovery]
+        s.nopen = len(grid_pos)
+
         has_buy = has_sell = False; buy_p = sell_p = 0.0; total = 0.0; earliest = 0
-        ps = s.br.positions(); s.nopen = len(ps)
-        for p in reversed(ps):
+        for p in reversed(grid_pos):
             v = p.profit + p.swap; total += v
             if earliest == 0 or p.time < earliest: earliest = p.time
             if p.dir > 0: has_buy, buy_p = True, v
@@ -155,7 +165,63 @@ class Bot:
         else:
             s.tp_price = 0.0
 
-        # 1b. MAX-LEGS BAILOUT EXIT (Fast escape when stacked at max capacity)
+        # 1a. LOSS RECYCLER: Manage active recovery scalp
+        if rec_pos:
+            rp = rec_pos[0]
+            rec_pnl = rp.profit + rp.swap
+            if rec_pnl >= c.recycle_tp:
+                s.br.close(rp)
+                worst_pos = min(grid_pos, key=lambda p: p.profit + p.swap) if grid_pos else None
+                if worst_pos and (worst_pos.profit + worst_pos.swap) < 0:
+                    s.br.close(worst_pos)
+                    s.log("RECYCLE_WIN", "BUY" if s.dir > 0 else "SELL",
+                          f"scalp +${rec_pnl:.2f} pruned leg #{worst_pos.ticket} (${worst_pos.profit + worst_pos.swap:+.2f})",
+                          bid, total, rec_pnl + worst_pos.profit + worst_pos.swap)
+                    s.status = f"RECYCLED: Pruned Leg #{worst_pos.ticket} (+${rec_pnl:.2f})"
+                else:
+                    s.log("RECYCLE_WIN", "BUY" if s.dir > 0 else "SELL", f"scalp +${rec_pnl:.2f} closed", bid, total, rec_pnl)
+                    s.status = f"RECYCLED: Scalp Win (+${rec_pnl:.2f})"
+                s.last_recycle_time = tc
+                return
+            elif rec_pnl <= -c.recycle_sl:
+                s.br.close(rp)
+                s.log("RECYCLE_STOP", "BUY" if s.dir > 0 else "SELL", f"scalp SL hit -${abs(rec_pnl):.2f}", bid, total, rec_pnl)
+                s.status = f"RECYCLER SCALP SL (-${abs(rec_pnl):.2f})"
+                s.last_recycle_time = tc
+                return
+            else:
+                s.status = f"GRID x{s.nopen} | RECYCLER SCALP ${rec_pnl:+.2f}"
+
+        # 1b. LOSS RECYCLER: Trigger new recovery scalp if max legs reached
+        if c.loss_recycler and s.nopen >= c.grid_max_legs and len(rec_pos) == 0 and s.dir != 0:
+            if s.recycle_extreme == 0.0:
+                s.recycle_extreme = bid if s.dir > 0 else ask
+            else:
+                if s.dir > 0 and bid < s.recycle_extreme:
+                    s.recycle_extreme = bid
+                elif s.dir < 0 and ask > s.recycle_extreme:
+                    s.recycle_extreme = ask
+
+            bounce = (bid - s.recycle_extreme) if s.dir > 0 else (s.recycle_extreme - ask)
+            cooldown_ok = (tc - s.last_recycle_time >= c.recycle_cooldown_sec)
+            not_paused = (tc >= s.margin_cooldown_until)
+
+            if bounce >= c.recycle_bounce_dist and cooldown_ok and not_paused and not c.break_time:
+                ok, rc = s.br.order(s.dir, magic=c.magic_recovery)
+                side_str = "BUY" if s.dir > 0 else "SELL"
+                if ok:
+                    s.last_recycle_time = tc
+                    s.recycle_extreme = bid if s.dir > 0 else ask
+                    s.log("RECYCLE_OPEN", side_str, f"bounce +${bounce:.2f} entry @ {bid:.2f}", bid, total, 0.0)
+                    s.status = "RECYCLER SCALP OPENED"
+                    return
+                else:
+                    s.last_recycle_time = tc + 30
+                    s.log("SKIP", side_str, f"recycle-order-failed rc={rc}", bid, total, 0.0)
+        elif s.nopen < c.grid_max_legs:
+            s.recycle_extreme = 0.0
+
+        # 1c. MAX-LEGS BAILOUT EXIT (Fast escape when stacked at max capacity)
         if c.grid_sessions and c.bailout_on_max_legs and s.nopen >= c.grid_max_legs and total >= c.bailout_target:
             s.status = f"GRID x{s.nopen} BAILOUT EXIT (${total:+.2f})"
             s.log("CLOSE", "BUY" if s.dir > 0 else "SELL", f"max-legs-bailout target={c.bailout_target:.2f}", bid, total, total)
@@ -525,7 +591,7 @@ class MT5Broker:
 
         return True, "OK"
 
-    def order(s, d):
+    def order(s, d, magic=None):
         ok_m, reason = s.check_margin(d)
         if not ok_m:
             return False, f"MARGIN_REJECT: {reason}"
@@ -541,6 +607,8 @@ class MT5Broker:
             if f not in fill_modes:
                 fill_modes.append(f)
 
+        use_magic = magic if magic is not None else s.c.magic
+        comment = "udt-recycle" if use_magic == s.c.magic_recovery else "udt-py"
         last_r = None
         for fill in fill_modes:
             req = dict(
@@ -550,8 +618,8 @@ class MT5Broker:
                 type=m.ORDER_TYPE_BUY if d > 0 else m.ORDER_TYPE_SELL,
                 price=price,
                 deviation=50,
-                magic=s.c.magic,
-                comment="udt-py",
+                magic=use_magic,
+                comment=comment,
                 type_time=m.ORDER_TIME_GTC,
                 type_filling=fill,
             )
@@ -632,14 +700,14 @@ class FakeBroker:
         if getattr(s, "margin_fail", False):
             return False, "FREE MARGIN $5.00 < MIN $10.00"
         return True, "OK"
-    def order(s, d):
+    def order(s, d, magic=None):
         ok_m, reason = s.check_margin(d)
         if not ok_m: return False, f"MARGIN_REJECT: {reason}"
         if s.fail: return False, 10027
-        s.n += 1; s.pos.append(dict(ticket=s.n, dir=d, entry=(s.bid + s.spread) if d > 0 else s.bid, time=s.t)); return True, 10009
+        s.n += 1; s.pos.append(dict(ticket=s.n, dir=d, entry=(s.bid + s.spread) if d > 0 else s.bid, time=s.t, magic=magic if magic is not None else 123790)); return True, 10009
     def close(s, p): s.pos = [q for q in s.pos if q["ticket"] != p.ticket]
     def positions(s):
-        return [Pos(q["ticket"], q["dir"], ((s.bid - q["entry"]) if q["dir"] > 0 else (q["entry"] - (s.bid + s.spread))) * 1.0, 0.0, q["time"], 123790) for q in s.pos]
+        return [Pos(q["ticket"], q["dir"], ((s.bid - q["entry"]) if q["dir"] > 0 else (q["entry"] - (s.bid + s.spread))) * 1.0, 0.0, q["time"], q.get("magic", 123790)) for q in s.pos]
 
 
 def selftest():
@@ -780,6 +848,17 @@ def selftest():
     step(b, bot)                      # BUY @4000.3
     step(b, bot, 3890.0)              # loss > $100
     check("equity risk stop cuts basket when loss exceeds % limit", not b.pos and any("equity-risk-sl" in e for e in bot.events))
+
+    # 8j. Loss Recycler: fires recovery scalp on bounce and prunes worst leg on win
+    cfg, b, bot = mk(grid_max_legs=2, loss_recycler=True, recycle_bounce_dist=0.50, recycle_tp=1.00, recycle_sl=1.00, recycle_cooldown_sec=0)
+    step(b, bot)                      # 1 buy @4000.3 (ticket 1)
+    step(b, bot, 3990.0)              # leg 2 added (ticket 2)
+    check("loss recycler: 2 legs open (max)", len(b.pos) == 2)
+    step(b, bot, 3980.0)              # price bottoms at 3980
+    step(b, bot, 3980.6)              # bounce +0.60 >= bounce_dist 0.50 -> fires recovery scalp!
+    check("loss recycler opens recovery scalp on bounce", len(b.pos) == 3 and any(p["magic"] == cfg.magic_recovery for p in b.pos))
+    step(b, bot, 3982.0)              # scalp profit +1.10 >= recycle_tp 1.00 -> closes scalp and prunes ticket 1!
+    check("loss recycler closes scalp and prunes worst leg", len(b.pos) == 1 and b.pos[0]["ticket"] == 2 and any("RECYCLE_WIN" in e for e in bot.events))
 
     # 9. CSV logger writes a header + rows
     d = tempfile.mkdtemp(); global HERE
@@ -939,12 +1018,12 @@ class BTBroker:
         if mid != s.day_mid: s.day_mid = mid; s.day_sum = 0.0
     def daily_profit(s): s._day(); return s.day_sum, 0
     def positions(s):
-        t = s._t; return [Pos(q[0], q[1], ((t.bid - q[2]) if q[1] > 0 else (q[2] - t.ask)) * s.pu, 0.0, q[3], s.c.magic) for q in s.pos]
+        t = s._t; return [Pos(q[0], q[1], ((t.bid - q[2]) if q[1] > 0 else (q[2] - t.ask)) * s.pu, 0.0, q[3], q[4] if len(q) > 4 else s.c.magic) for q in s.pos]
     def floating(s):
         t = s._t; return sum(((t.bid - q[2]) if q[1] > 0 else (q[2] - t.ask)) * s.pu for q in s.pos)
-    def order(s, d):
+    def order(s, d, magic=None):
         t = s._t; s.n += 1
-        s.pos.append([s.n, d, (t.ask + s.slip) if d > 0 else (t.bid - s.slip), t.time]); return True, 10009
+        s.pos.append([s.n, d, (t.ask + s.slip) if d > 0 else (t.bid - s.slip), t.time, magic if magic is not None else s.c.magic]); return True, 10009
     def close(s, p):
         for q in s.pos:
             if q[0] == p.ticket:
