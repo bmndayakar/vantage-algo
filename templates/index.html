@@ -516,6 +516,34 @@
               <input type="number" step="10.0" id="cfg-min_margin_level" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="default 200.0">
             </div>
 
+            <div>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Trend Invalidation Stop ($)</label>
+              <input type="number" step="0.5" id="cfg-trend_stop_dist" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="e.g. 6.00 (0=Off)">
+            </div>
+            <div>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Max Equity Risk SL (%)</label>
+              <input type="number" step="1.0" id="cfg-max_equity_risk_pct" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="e.g. 20.0 (0=Off)">
+            </div>
+
+            <div>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Hard Time Cap (Hours)</label>
+              <input type="number" step="0.5" id="cfg-hard_cap_hours" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="e.g. 2.0 (0=Off)">
+            </div>
+            <div>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Bailout Target Profit ($)</label>
+              <input type="number" step="0.01" id="cfg-bailout_target" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="default 0.05">
+            </div>
+
+            <div class="col-span-1 sm:col-span-2 pt-1 sm:pt-2">
+              <label class="flex items-center space-x-2 cursor-pointer select-none">
+                <input type="checkbox" id="cfg-bailout_on_max_legs" class="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700">
+                <span class="text-slate-700 dark:text-slate-300 font-bold flex items-center space-x-1">
+                  <span>🎯</span>
+                  <span>Max-Legs Bailout: Target Break-Even / Scratch when grid maxes out (Avoids Grid Trap)</span>
+                </span>
+              </label>
+            </div>
+
             <div class="col-span-1 sm:col-span-2 pt-1 sm:pt-2">
               <label class="flex items-center space-x-2 cursor-pointer select-none">
                 <input type="checkbox" id="cfg-break_time" class="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700">
@@ -1486,6 +1514,11 @@
         rsi_filter: document.getElementById('cfg-rsi_filter').checked,
         min_free_margin: parseFloat(document.getElementById('cfg-min_free_margin').value) || 10.0,
         min_margin_level: parseFloat(document.getElementById('cfg-min_margin_level').value) || 200.0,
+        trend_stop_dist: parseFloat(document.getElementById('cfg-trend_stop_dist').value) || 0.0,
+        max_equity_risk_pct: parseFloat(document.getElementById('cfg-max_equity_risk_pct').value) || 0.0,
+        hard_cap_hours: parseFloat(document.getElementById('cfg-hard_cap_hours').value) || 0.0,
+        bailout_target: parseFloat(document.getElementById('cfg-bailout_target').value) || 0.05,
+        bailout_on_max_legs: document.getElementById('cfg-bailout_on_max_legs').checked,
         break_time: document.getElementById('cfg-break_time').checked
       };
       const res = await fetch('/api/config', {

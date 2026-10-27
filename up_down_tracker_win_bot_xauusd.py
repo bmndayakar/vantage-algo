@@ -66,6 +66,10 @@ class Cfg:
     rsi_period: int = 14                 # RSI calculation period
     rsi_ob: float = 70.0                 # RSI overbought threshold
     rsi_os: float = 30.0                 # RSI oversold threshold
+    bailout_on_max_legs: bool = True     # True: when grid hits max legs, switch target to bailout_target to escape
+    bailout_target: float = 0.05         # Target profit ($) in bailout mode (0.05 = breakeven exit)
+    trend_stop_dist: float = 0.0         # >0: close basket if price moves N dollars on wrong side of MA
+    max_equity_risk_pct: float = 0.0     # >0: max floating basket loss allowed as % of account equity
     break_time: bool = False             # True: finish open trades, but block new initial entries
     min_free_margin: float = 10.0        # Min free margin ($) required before allowing a new entry
     margin_buffer_pct: float = 20.0      # Required free margin safety buffer % over required margin
@@ -143,12 +147,40 @@ class Bot:
         if s.nopen > 0 and s.dir != 0:
             tv, ts = s.br.tick_value_size()
             per_unit = (tv / ts) * c.lots * s.nopen if ts > 0 else 0
-            tgt = c.grid_tp if c.grid_sessions else c.basket_target
+            if c.bailout_on_max_legs and s.nopen >= c.grid_max_legs:
+                tgt = c.bailout_target
+            else:
+                tgt = c.grid_tp if c.grid_sessions else c.basket_target
             if per_unit > 0: s.tp_price = bid + s.dir * (tgt - total) / per_unit
         else:
             s.tp_price = 0.0
 
-        # 1b. PROFIT-PEAK TRAIL
+        # 1b. MAX-LEGS BAILOUT EXIT (Fast escape when stacked at max capacity)
+        if c.grid_sessions and c.bailout_on_max_legs and s.nopen >= c.grid_max_legs and total >= c.bailout_target:
+            s.status = f"GRID x{s.nopen} BAILOUT EXIT (${total:+.2f})"
+            s.log("CLOSE", "BUY" if s.dir > 0 else "SELL", f"max-legs-bailout target={c.bailout_target:.2f}", bid, total, total)
+            s.close_all()
+            return
+
+        # 1c. TREND INVALIDATION STOP (Cuts losing basket if market reverses strongly across MA)
+        if c.trend_stop_dist > 0 and s.ma > 0 and s.nopen > 0 and s.dir != 0:
+            dist_wrong = (s.ma - bid) if s.dir > 0 else (bid - s.ma)
+            if dist_wrong >= c.trend_stop_dist:
+                s.status = f"TREND INVALIDATED (${dist_wrong:.2f} past MA)"
+                s.log("CLOSE", "BUY" if s.dir > 0 else "SELL", f"trend-inval dist={dist_wrong:.2f}", bid, total, total)
+                s.close_all()
+                return
+
+        # 1d. EQUITY RISK STOP (Guarantees max drawdown % per basket on any account size)
+        if s.nopen > 0 and c.max_equity_risk_pct > 0 and eq > 0:
+            max_eq_loss = eq * (c.max_equity_risk_pct / 100.0)
+            if total <= -max_eq_loss:
+                s.status = f"EQUITY RISK STOP (-${abs(total):.2f} >= {c.max_equity_risk_pct:.0f}%)"
+                s.log("CLOSE", "BUY" if s.dir > 0 else "SELL", f"equity-risk-sl limit={max_eq_loss:.2f}", bid, total, total)
+                s.close_all()
+                return
+
+        # 1e. PROFIT-PEAK TRAIL
         if s.nopen == 0: s.peak = 0.0; s.trail_stop = 0.0
         elif total > s.peak: s.peak = total
         if c.trail_on and s.nopen > 0 and s.peak >= c.trail_arm:
@@ -180,7 +212,10 @@ class Bot:
 
         # 2c. GRID SESSIONS (owns the basket; never falls through)
         if c.grid_sessions and s.nopen > 0:
-            s.status = f"GRID x{s.nopen}"
+            if c.bailout_on_max_legs and s.nopen >= c.grid_max_legs:
+                s.status = f"GRID x{s.nopen} (BAILOUT @ ${c.bailout_target:+.2f})"
+            else:
+                s.status = f"GRID x{s.nopen}"
             if (not c.trail_on) and total >= c.grid_tp:
                 s.log("CLOSE", "-", "grid-tp", bid, total, total); s.close_all(); return
             if c.grid_sl > 0 and total <= -c.grid_sl:
@@ -725,6 +760,26 @@ def selftest():
     check("margin pre-check blocks order and enforces margin cooldown", not b.pos and "MARGIN" in bot.status and bot.margin_cooldown_until > b.t)
     b.t += 61; step(b, bot) # Second consecutive margin reject triggers pause instead of infinite loop
     check("margin pre-check breaks endless loop after repeated rejects", not b.pos and "PAUSED (INSUFFICIENT MARGIN)" in bot.status and bot.margin_reject_count >= 2)
+
+    # 8g. Max Legs Bailout: when max legs reached, escape at bailout_target
+    cfg, b, bot = mk(grid_max_legs=2, bailout_on_max_legs=True, bailout_target=0.10)
+    step(b, bot)                      # 1 buy @4000.3
+    step(b, bot, 3990.0)              # leg 2 added
+    check("grid has 2 legs (max)", len(b.pos) == 2)
+    step(b, bot, 4000.5)              # basket profit now >= 0.10 -> bailout exit
+    check("bailout exit closes max legs basket at target", not b.pos and any("max-legs-bailout" in e for e in bot.events))
+
+    # 8h. Trend Invalidation Stop: cuts position when price moves past MA
+    cfg, b, bot = mk(trend_stop_dist=5.0)
+    step(b, bot)                      # BUY @4000.3, MA=3990
+    b.ma_v = 4010.0; step(b, bot, 4004.0)  # price 4004 is 6 below MA 4010 >= trend_stop_dist (5.0)
+    check("trend invalidation cuts basket when trend reverses across MA", not b.pos and any("trend-inval" in e for e in bot.events))
+
+    # 8i. Equity Risk Stop: cuts basket if loss exceeds equity %
+    cfg, b, bot = mk(max_equity_risk_pct=10.0)  # 10% of $1000 eq = $100
+    step(b, bot)                      # BUY @4000.3
+    step(b, bot, 3890.0)              # loss > $100
+    check("equity risk stop cuts basket when loss exceeds % limit", not b.pos and any("equity-risk-sl" in e for e in bot.events))
 
     # 9. CSV logger writes a header + rows
     d = tempfile.mkdtemp(); global HERE
