@@ -82,10 +82,10 @@
           <span id="txt-market" class="font-semibold text-slate-600 dark:text-slate-300">Market: Checking...</span>
         </div>
 
-        <!-- Login Trigger Button (visible if no active login) -->
-        <button id="btn-open-login" onclick="openLoginModal()" class="hidden items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-semibold cursor-pointer transition">
+        <!-- Account Switcher Button (Always accessible) -->
+        <button id="btn-open-login" onclick="openLoginModal()" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-semibold cursor-pointer transition" title="Switch MT5 Account (Demo / Live)">
           <span>🔑</span>
-          <span>Login to MT5</span>
+          <span>Switch Account</span>
         </button>
       </div>
 
@@ -133,7 +133,7 @@
   </header>
 
   <!-- MAIN CONTAINER -->
-  <main class="max-w-7xl mx-auto p-4 sm:p-6 flex-1 w-full space-y-6">
+  <main class="max-w-7xl mx-auto p-3.5 sm:p-5 flex-1 w-full space-y-4 sm:space-y-4.5">
 
     <!-- CRITICAL ALERTS / WARNINGS -->
     <div id="box-alert" class="hidden px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 text-amber-800 dark:text-amber-300 text-sm flex items-center justify-between">
@@ -144,15 +144,24 @@
       <button onclick="dismissAlert()" class="text-amber-600 dark:text-amber-400 hover:opacity-75">&times;</button>
     </div>
 
-    <!-- ROW 1: PRIMARY METRIC CARDS -->
-    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+    <!-- SECTION 1: MARKET OVERVIEW & CORE METRICS -->
+    <div>
+      <div class="flex items-center justify-between mb-2 px-1">
+        <div class="flex items-center space-x-2">
+          <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+          <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Market Overview &amp; Core Metrics</h2>
+        </div>
+        <span class="text-[11px] text-slate-400 dark:text-slate-500 font-mono">Live Quotes &bull; Exposure &amp; Goals</span>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-3.5">
       
-      <!-- CARD 1: MARKET PRICE & MA -->
-      <div id="card-price" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm relative overflow-hidden transition-all duration-300">
-        <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
-          <div class="flex items-center space-x-1">
-            <span class="text-xs text-amber-500">⚡</span>
-            <select id="select-symbol" onchange="onSymbolChange(this.value)" class="bg-transparent font-bold text-slate-900 dark:text-white border-b border-dashed border-slate-300 dark:border-slate-700 py-0.5 pr-1 focus:outline-none cursor-pointer text-sm font-mono hover:border-amber-500 transition">
+      <!-- CARD 1: MARKET PRICE & MA (Enlarged Slate) -->
+      <div id="card-price" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3.5 shadow-sm relative overflow-hidden transition-all duration-300 col-span-2 sm:col-span-2 md:col-span-2 lg:col-span-2 flex flex-col justify-between">
+        <!-- Top bar: Symbol & Badges -->
+        <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1.5">
+          <div class="flex items-center space-x-1.5">
+            <span class="text-sm text-amber-500">⚡</span>
+            <select id="select-symbol" onchange="onSymbolChange(this.value)" class="bg-transparent font-bold text-slate-900 dark:text-white border-b border-dashed border-slate-300 dark:border-slate-700 py-0.5 pr-2 focus:outline-none cursor-pointer text-xs sm:text-sm font-mono hover:border-amber-500 transition">
               <option value="XAUUSD">XAUUSD (Gold)</option>
               <option value="EURUSD">EURUSD</option>
               <option value="GBPUSD">GBPUSD</option>
@@ -163,240 +172,285 @@
             </select>
           </div>
           <div class="flex items-center space-x-1.5">
-            <span id="badge-market-tag" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700">CLOSED</span>
-            <span id="badge-trend" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">---</span>
+            <span id="badge-market-tag" class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700">CLOSED</span>
+            <span id="badge-trend" class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400" title="Macro 250-period Moving Average Trend">TREND: ---</span>
           </div>
         </div>
-        <div class="text-2xl font-bold font-mono tracking-tight text-slate-900 dark:text-white mb-1" id="txt-bid">0.00</div>
-        <div class="text-xs text-slate-500 dark:text-slate-400 flex justify-between">
-          <span>Ask: <span id="txt-ask" class="font-mono text-slate-700 dark:text-slate-300">0.00</span></span>
-          <span>Spread: <span id="txt-spread" class="font-mono text-amber-600 dark:text-amber-400 font-semibold">0.00</span></span>
-        </div>
-        <div class="text-[11px] text-slate-400 dark:text-slate-500 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-between">
-          <span>MA: <span id="txt-ma" class="font-mono text-slate-700 dark:text-slate-300">---</span></span>
-          <span>RSI: <span id="txt-rsi" class="font-mono text-slate-700 dark:text-slate-300">50</span></span>
-        </div>
-        <div class="text-[11px] text-slate-400 dark:text-slate-500 mt-1 flex justify-between">
-          <span>MA Dist: <span id="txt-ma-dist" class="font-mono text-slate-700 dark:text-slate-300">---</span></span>
-          <span>Max: <span id="txt-ma-max-dist" class="font-mono text-amber-600 dark:text-amber-400 font-semibold">---</span></span>
-        </div>
-        <div class="text-[11px] text-slate-400 dark:text-slate-500 mt-1 flex justify-between items-center">
-          <span>Waiting:</span>
-          <span id="txt-entry-target" class="font-mono font-bold text-emerald-600 dark:text-emerald-400 truncate max-w-[130px]" title="">---</span>
+
+        <!-- Main Body: 2 Sub-panels (Price & Technical Slate) -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 items-center">
+          <!-- Sub-panel Left: Big Bid & Ask/Spread -->
+          <div class="flex flex-col justify-center">
+            <div class="text-2xl sm:text-3xl font-black font-mono tracking-tight text-slate-900 dark:text-white leading-none my-0.5" id="txt-bid">0.00</div>
+            <div class="text-[11px] text-slate-500 dark:text-slate-400 flex items-center space-x-2 font-mono whitespace-nowrap mt-1">
+              <span>Ask: <span id="txt-ask" class="font-semibold text-slate-800 dark:text-slate-200">0.00</span></span>
+              <span class="text-slate-300 dark:text-slate-700">•</span>
+              <span>Spr: <span id="txt-spread" class="text-amber-600 dark:text-amber-400 font-bold">0.00</span></span>
+            </div>
+          </div>
+
+          <!-- Sub-panel Right: Compact MA Technical Slate -->
+          <div class="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-2.5 border border-slate-100 dark:border-slate-800 text-[11px] space-y-1">
+            <div class="flex justify-between items-center whitespace-nowrap">
+              <span class="text-slate-500 dark:text-slate-400">MA: <span id="txt-ma" class="font-mono font-bold text-slate-900 dark:text-white">---</span></span>
+              <span class="text-slate-300 dark:text-slate-700 mx-1">|</span>
+              <span class="text-slate-500 dark:text-slate-400">RSI: <span id="txt-rsi" class="font-mono font-bold text-slate-900 dark:text-white">50.0</span></span>
+            </div>
+            <div class="flex justify-between items-center whitespace-nowrap pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
+              <span class="text-slate-500 dark:text-slate-400">Dist: <span id="txt-ma-dist" class="font-mono font-bold text-slate-800 dark:text-slate-200">---</span></span>
+              <span class="text-slate-300 dark:text-slate-700 mx-1">|</span>
+              <span class="text-slate-500 dark:text-slate-400">Cap: <span id="txt-ma-max-dist" class="font-mono font-bold text-amber-600 dark:text-amber-400">---</span></span>
+            </div>
+            <div class="flex justify-between items-center whitespace-nowrap pt-1 border-t border-slate-200/60 dark:border-slate-700/60 min-w-0">
+              <span class="text-slate-500 dark:text-slate-400 flex-shrink-0 mr-1.5">Target:</span>
+              <span id="txt-entry-target" class="font-mono font-extrabold text-emerald-600 dark:text-emerald-400 truncate text-right text-[11px]" title="">---</span>
+            </div>
+          </div>
         </div>
       </div>
 
       <!-- CARD 2: BASKET FLOATING P&L -->
-      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm relative overflow-hidden transition-colors">
-        <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
-          <span class="font-medium">Basket Floating P&L</span>
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3.5 shadow-sm relative overflow-hidden transition-colors flex flex-col justify-between">
+        <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-0.5">
+          <span class="font-medium">Basket P&L</span>
           <span class="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500">Open Legs</span>
         </div>
-        <div class="text-3xl font-extrabold font-mono tracking-tight" id="txt-basket-pnl">$0.00</div>
-        <div class="text-xs text-slate-500 dark:text-slate-400 mt-1 flex justify-between">
+        <div class="text-2xl font-black font-mono tracking-tight my-0.5" id="txt-basket-pnl">$0.00</div>
+        <div class="text-[11px] text-slate-500 dark:text-slate-400 flex justify-between mt-0.5">
           <span>TP Target:</span>
           <span id="txt-tp-price" class="font-mono text-slate-700 dark:text-slate-300">---</span>
         </div>
-        <div class="text-[11px] text-slate-400 dark:text-slate-500 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-between">
-          <span>Status:</span>
-          <span id="txt-bot-status" class="font-semibold text-amber-600 dark:text-amber-400 truncate max-w-[110px]">IDLE</span>
+        <div class="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 pt-1 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between min-w-0">
+          <span class="flex-shrink-0 mr-1.5">Status:</span>
+          <span id="txt-bot-status" class="font-semibold text-amber-600 dark:text-amber-400 text-right truncate" title="Engine Status">IDLE</span>
         </div>
       </div>
 
       <!-- CARD 3: GRID LEGS & EXPOSURE -->
-      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm transition-colors">
-        <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3.5 shadow-sm transition-colors flex flex-col justify-between">
+        <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-0.5">
           <span class="font-medium">Grid Stack</span>
-          <span id="txt-legs-count" class="font-bold text-slate-800 dark:text-slate-200">0 / 5 Legs</span>
+          <span id="txt-legs-count" class="font-bold text-slate-800 dark:text-slate-200">0 / 3 Legs</span>
         </div>
         <!-- Dots visualizer for 5 legs -->
-        <div class="flex space-x-1.5 my-3" id="legs-dots">
+        <div class="flex space-x-1 my-2" id="legs-dots">
           <div class="h-2 flex-1 rounded-full bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700"></div>
           <div class="h-2 flex-1 rounded-full bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700"></div>
           <div class="h-2 flex-1 rounded-full bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700"></div>
           <div class="h-2 flex-1 rounded-full bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700"></div>
           <div class="h-2 flex-1 rounded-full bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700"></div>
         </div>
-        <div class="text-xs text-slate-500 dark:text-slate-400 flex justify-between mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+        <div class="text-[11px] text-slate-500 dark:text-slate-400 flex justify-between mt-1 pt-1 border-t border-slate-100 dark:border-slate-800">
           <span>Exposure:</span>
           <span id="txt-exposure" class="font-mono text-slate-700 dark:text-slate-300">0.0%</span>
         </div>
       </div>
 
       <!-- CARD 4: TRAILING STOP STATUS -->
-      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm transition-colors">
-        <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
-          <span class="font-medium">Profit-Peak Trail</span>
-          <span id="txt-trail-on" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">ACTIVE</span>
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3.5 shadow-sm transition-colors flex flex-col justify-between">
+        <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-0.5">
+          <span class="font-medium">Trailing Stop</span>
+          <span id="txt-trail-on" class="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">ACTIVE</span>
         </div>
-        <div class="text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1" id="txt-peak">Peak: $0.00</div>
-        <div class="text-xs font-mono text-slate-700 dark:text-slate-300 mt-1" id="txt-trail-stop">Lock: $0.00</div>
-        <div class="text-[11px] text-slate-400 dark:text-slate-500 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-between">
+        <div class="text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400 my-0.5" id="txt-peak">Peak: $0.00</div>
+        <div class="text-[11px] font-mono text-slate-700 dark:text-slate-300" id="txt-trail-stop">Lock: $0.00</div>
+        <div class="text-[10px] text-slate-400 dark:text-slate-500 mt-1.5 pt-1 border-t border-slate-100 dark:border-slate-800 flex justify-between">
           <span>Arm threshold:</span>
           <span id="txt-trail-arm" class="font-mono text-slate-700 dark:text-slate-300">$1.00</span>
         </div>
       </div>
 
-      <!-- CARD 5: DAILY GOAL PROGRESS -->
-      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm col-span-2 md:col-span-2 transition-colors">
-        <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
-          <span class="font-medium">Daily Profit Progress</span>
-          <span id="txt-deals-count" class="text-slate-500 dark:text-slate-400">0 Deals Closed</span>
+      <!-- CARD 5: DAILY GOAL PROGRESS (Compact 1-Column) -->
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3.5 shadow-sm col-span-1 transition-colors flex flex-col justify-between">
+        <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-0.5">
+          <span class="font-medium">Daily Goal</span>
+          <span id="txt-deals-count" class="text-[10px] text-slate-400 dark:text-slate-500">0 Deals</span>
         </div>
-        <div class="flex items-baseline justify-between my-1">
-          <span class="text-2xl font-bold font-mono" id="txt-daily-profit">$0.00</span>
-          <span class="text-xs text-slate-500 dark:text-slate-400 font-mono">Goal: <span id="txt-daily-goal" class="text-slate-800 dark:text-slate-200 font-semibold">$20.00</span></span>
+        <div class="flex items-baseline justify-between mt-0.5">
+          <span class="text-xl font-black font-mono text-slate-900 dark:text-white" id="txt-daily-profit">$0.00</span>
+          <span class="text-[10px] text-slate-400 dark:text-slate-500 font-mono whitespace-nowrap">/ <span id="txt-daily-goal" class="font-semibold text-slate-700 dark:text-slate-300">$20</span></span>
         </div>
         <!-- Progress Bar -->
-        <div class="w-full bg-slate-200 dark:bg-slate-800 h-2.5 rounded-full overflow-hidden mt-2">
+        <div class="w-full bg-slate-200 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden mt-1.5">
           <div id="bar-daily-progress" class="bg-gradient-to-r from-amber-500 to-emerald-500 h-full w-0 transition-all duration-500"></div>
         </div>
-        <div class="text-[11px] text-slate-400 dark:text-slate-500 mt-2 pt-1 flex justify-between">
-          <span>Completion: <span id="txt-daily-pct" class="font-semibold text-slate-700 dark:text-slate-300">0%</span></span>
-          <span id="txt-goal-status" class="text-slate-500 dark:text-slate-400">Trading in progress</span>
-        </div>
-      </div>
-
-    </div>
-
-    <!-- REAL-TIME ENTRY TELEMETRY & MA RADAR -->
-    <div id="panel-entry-radar" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-5 py-3.5 shadow-sm transition-all duration-200">
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <!-- Left: Status & Icon -->
-        <div class="flex items-center space-x-3 min-w-0">
-          <span id="dot-entry-radar" class="w-3 h-3 rounded-full bg-slate-400 flex-shrink-0"></span>
-          <div class="min-w-0">
-            <div class="flex items-center space-x-2">
-              <span class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">Entry Radar</span>
-              <span id="badge-entry-mode" class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">BOTH</span>
-            </div>
-            <div id="txt-entry-headline" class="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">
-              Calculating entry conditions...
-            </div>
-          </div>
-        </div>
-
-        <!-- Right: Telemetry Metrics -->
-        <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
-          <div class="flex items-center space-x-1.5">
-            <span class="text-slate-400 dark:text-slate-500">Current MA:</span>
-            <span id="radar-ma" class="font-mono font-bold text-slate-800 dark:text-slate-200">---</span>
-          </div>
-          <div class="flex items-center space-x-1.5">
-            <span class="text-slate-400 dark:text-slate-500">Distance:</span>
-            <span id="radar-dist" class="font-mono font-bold text-slate-800 dark:text-slate-200">---</span>
-          </div>
-          <div class="flex items-center space-x-1.5">
-            <span class="text-slate-400 dark:text-slate-500">Max MA Dist:</span>
-            <span id="radar-max-dist" class="font-mono font-bold text-amber-600 dark:text-amber-400">---</span>
-          </div>
-          <div class="flex items-center space-x-1.5 bg-slate-50 dark:bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700">
-            <span class="text-slate-500 dark:text-slate-400 font-medium">Waiting For Price:</span>
-            <span id="radar-waiting-for" class="font-mono font-extrabold text-emerald-600 dark:text-emerald-400">---</span>
-          </div>
+        <div class="text-[10px] text-slate-400 dark:text-slate-500 mt-1.5 pt-1 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center">
+          <span>Done: <span id="txt-daily-pct" class="font-bold text-slate-700 dark:text-slate-300">0%</span></span>
+          <span id="txt-goal-status" class="text-slate-400 dark:text-slate-500 truncate max-w-[70px]">In progress</span>
         </div>
       </div>
     </div>
 
-    <!-- ROW 2: CHART & OPEN POSITIONS -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      
-      <!-- P&L / EQUITY CURVE CHART (2 Cols) -->
-      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm lg:col-span-2 flex flex-col transition-colors">
-        <div class="flex items-center justify-between mb-4">
-          <div class="flex items-center space-x-2">
-            <span class="text-base font-bold text-slate-900 dark:text-white">Session P&L Trajectory</span>
-            <span id="badge-chart-status" class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700">PAUSED (BOT IDLE)</span>
-          </div>
-          <div class="text-xs font-mono text-slate-500 dark:text-slate-400">
-            Equity: <span id="txt-equity" class="text-emerald-600 dark:text-emerald-400 font-bold">$0.00</span>
-            <span class="text-slate-300 dark:text-slate-700 mx-1">&bull;</span>
-            Free Margin: <span id="txt-free-margin" class="text-amber-600 dark:text-amber-400 font-bold">$0.00</span>
-          </div>
-        </div>
-        <div class="relative flex-1 min-h-[260px] w-full">
-          <canvas id="pnlChart"></canvas>
-        </div>
-      </div>
-
-      <!-- POSITIONS & TRADES CARD (1 Col, Tabs: Open & Closed) -->
-      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm flex flex-col transition-colors">
-        
-        <!-- Header with Tabs and Legend -->
-        <div class="flex items-center justify-between mb-3 border-b border-slate-100 dark:border-slate-800 pb-3">
-          <div class="flex items-center space-x-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl text-xs font-semibold">
-            <button id="tab-btn-open" onclick="switchPositionsTab('open')" class="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm flex items-center space-x-1.5 transition-all">
-              <span>Open</span>
-              <span id="badge-open-count" class="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400">0</span>
-            </button>
-            <button id="tab-btn-closed" onclick="switchPositionsTab('closed')" class="px-3 py-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white flex items-center space-x-1.5 transition-all">
-              <span>Closed</span>
-              <span id="badge-closed-count" class="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300">0</span>
-            </button>
-          </div>
-
-          <span class="text-xs text-slate-400 dark:text-slate-500 flex items-center space-x-1.5 font-mono">
-            <span><span class="px-1 py-0.2 rounded text-[9px] font-extrabold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">B</span> Bot</span>
-            <span>&bull;</span>
-            <span><span class="px-1 py-0.2 rounded text-[9px] font-extrabold bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30">U</span> User</span>
-          </span>
-        </div>
-
-        <!-- TAB 1: OPEN POSITIONS TABLE -->
-        <div id="tab-content-open" class="flex-1 overflow-y-auto max-h-[250px]">
-          <table class="w-full text-left text-xs">
-            <thead class="text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 sticky top-0 border-b border-slate-200 dark:border-slate-800">
-              <tr>
-                <th class="p-2 font-medium">Type</th>
-                <th class="p-2 font-medium">Lots</th>
-                <th class="p-2 font-medium">Entry Price &amp; Time</th>
-                <th class="p-2 font-medium text-right">P&L ($)</th>
-              </tr>
-            </thead>
-            <tbody id="tbl-positions" class="divide-y divide-slate-100 dark:divide-slate-800/60 font-mono">
-              <tr>
-                <td colspan="4" class="p-8 text-center text-slate-400 dark:text-slate-500 font-sans">No open positions</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- TAB 2: CLOSED TRADES TABLE -->
-        <div id="tab-content-closed" class="hidden flex-1 overflow-y-auto max-h-[250px]">
-          <table class="w-full text-left text-xs">
-            <thead class="text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 sticky top-0 border-b border-slate-200 dark:border-slate-800">
-              <tr>
-                <th class="p-2 font-medium">Type</th>
-                <th class="p-2 font-medium">Lots</th>
-                <th class="p-2 font-medium">Price &amp; Timing (In &rarr; Out)</th>
-                <th class="p-2 font-medium text-right">Profit ($)</th>
-              </tr>
-            </thead>
-            <tbody id="tbl-closed-positions" class="divide-y divide-slate-100 dark:divide-slate-800/60 font-mono">
-              <tr>
-                <td colspan="4" class="p-8 text-center text-slate-400 dark:text-slate-500 font-sans">No closed trades today</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-      </div>
-
-    </div>
-
-    <!-- ROW 3: DECISION LOG & AUDIT FEED -->
-    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm transition-colors">
-      <div class="flex items-center justify-between mb-3">
+    <!-- SECTION 2: REAL-TIME ENTRY TELEMETRY & MA RADAR -->
+    <div>
+      <div class="flex items-center justify-between mb-2 px-1">
         <div class="flex items-center space-x-2">
-          <span class="text-base font-bold text-slate-900 dark:text-white">Live Trading Engine Feed</span>
-          <span class="w-2 h-2 rounded-full bg-emerald-500 pulse-dot"></span>
+          <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
+          <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Real-Time Entry Telemetry &amp; MA Radar</h2>
         </div>
-        <span class="text-xs text-slate-400 font-mono">Recorded in CSV &bull; Streaming</span>
+        <span class="text-[11px] text-slate-400 dark:text-slate-500 font-mono">Dual Direction Bias &bull; Distance Radar</span>
       </div>
+      <div id="panel-entry-radar" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 sm:px-5 py-3 sm:py-3.5 shadow-sm transition-all duration-200">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <!-- Left: Status & Icon -->
+          <div class="flex items-center space-x-3 min-w-0">
+            <span id="dot-entry-radar" class="w-3 h-3 rounded-full bg-slate-400 flex-shrink-0"></span>
+            <div class="min-w-0">
+              <div class="flex items-center space-x-2">
+                <span class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">Entry Radar</span>
+                <span id="badge-entry-mode" class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">BOTH</span>
+              </div>
+              <div id="txt-entry-headline" class="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200">
+                Calculating entry conditions...
+              </div>
+            </div>
+          </div>
 
-      <!-- Terminal Output Window -->
-      <div id="log-terminal" class="bg-slate-950 border border-slate-800 dark:border-slate-800 rounded-xl p-3.5 font-mono text-xs text-slate-300 h-48 overflow-y-auto space-y-1.5 shadow-inner">
-        <div class="text-slate-500">[System] Initializing Vantage Multi-Asset Bot UI...</div>
+          <!-- Right: Telemetry Metrics -->
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5 sm:gap-x-5 text-xs">
+            <div class="flex items-center space-x-1.5">
+              <span class="text-slate-400 dark:text-slate-500">Current MA:</span>
+              <span id="radar-ma" class="font-mono font-bold text-slate-800 dark:text-slate-200">---</span>
+            </div>
+            <div class="flex items-center space-x-1.5">
+              <span class="text-slate-400 dark:text-slate-500">Distance:</span>
+              <span id="radar-dist" class="font-mono font-bold text-slate-800 dark:text-slate-200">---</span>
+            </div>
+            <div class="flex items-center space-x-1.5">
+              <span class="text-slate-400 dark:text-slate-500">Max MA Dist:</span>
+              <span id="radar-max-dist" class="font-mono font-bold text-amber-600 dark:text-amber-400">---</span>
+            </div>
+            <div class="flex items-center space-x-1.5">
+              <span class="text-slate-400 dark:text-slate-500">RSI-14:</span>
+              <span id="radar-rsi-val" class="font-mono font-bold text-slate-800 dark:text-slate-200">50.0</span>
+              <span id="radar-rsi-badge" class="px-1.5 py-0.2 rounded text-[10px] font-extrabold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">NORMAL</span>
+            </div>
+            <div class="flex items-center space-x-2 bg-slate-50 dark:bg-slate-800/80 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
+              <span id="radar-waiting-label" class="text-slate-500 dark:text-slate-400 font-medium whitespace-nowrap">Waiting For Price:</span>
+              <span id="radar-waiting-for" class="font-mono font-extrabold text-emerald-600 dark:text-emerald-400">---</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 3: PERFORMANCE ANALYTICS & ORDER MANAGEMENT -->
+    <div>
+      <div class="flex items-center justify-between mb-2 px-1">
+        <div class="flex items-center space-x-2">
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Performance Analytics &amp; Order Management</h2>
+        </div>
+        <span class="text-[11px] text-slate-400 dark:text-slate-500 font-mono">Session Trajectory &bull; Open &amp; Closed Leg Audit</span>
+      </div>
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
+        
+        <!-- P&L / EQUITY CURVE CHART (2 Cols) -->
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm lg:col-span-2 flex flex-col transition-colors">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center space-x-2">
+              <span class="text-base font-bold text-slate-900 dark:text-white">Session P&L Trajectory</span>
+              <span id="badge-chart-status" class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700">PAUSED (BOT IDLE)</span>
+            </div>
+            <div class="text-xs font-mono text-slate-500 dark:text-slate-400">
+              Equity: <span id="txt-equity" class="text-emerald-600 dark:text-emerald-400 font-bold">$0.00</span>
+              <span class="text-slate-300 dark:text-slate-700 mx-1">&bull;</span>
+              Free Margin: <span id="txt-free-margin" class="text-amber-600 dark:text-amber-400 font-bold">$0.00</span>
+            </div>
+          </div>
+          <div class="relative flex-1 min-h-[220px] sm:min-h-[240px] w-full">
+            <canvas id="pnlChart"></canvas>
+          </div>
+        </div>
+
+        <!-- POSITIONS & TRADES CARD (1 Col, Tabs: Open & Closed) -->
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm flex flex-col transition-colors">
+          
+          <!-- Header with Tabs and Legend -->
+          <div class="flex items-center justify-between mb-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+            <div class="flex items-center space-x-1 bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl text-xs font-semibold">
+              <button id="tab-btn-open" onclick="switchPositionsTab('open')" class="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm flex items-center space-x-1.5 transition-all">
+                <span>Open</span>
+                <span id="badge-open-count" class="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400">0</span>
+              </button>
+              <button id="tab-btn-closed" onclick="switchPositionsTab('closed')" class="px-3 py-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white flex items-center space-x-1.5 transition-all">
+                <span>Closed</span>
+                <span id="badge-closed-count" class="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300">0</span>
+              </button>
+            </div>
+
+            <span class="text-xs text-slate-400 dark:text-slate-500 flex items-center space-x-1.5 font-mono">
+              <span><span class="px-1 py-0.2 rounded text-[9px] font-extrabold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">B</span> Bot</span>
+              <span>&bull;</span>
+              <span><span class="px-1 py-0.2 rounded text-[9px] font-extrabold bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30">U</span> User</span>
+            </span>
+          </div>
+
+          <!-- TAB 1: OPEN POSITIONS TABLE -->
+          <div id="tab-content-open" class="flex-1 overflow-y-auto max-h-[250px]">
+            <table class="w-full text-left text-xs">
+              <thead class="text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 sticky top-0 border-b border-slate-200 dark:border-slate-800">
+                <tr>
+                  <th class="p-2 font-medium">Type</th>
+                  <th class="p-2 font-medium">Lots</th>
+                  <th class="p-2 font-medium">Entry Price &amp; Time</th>
+                  <th class="p-2 font-medium text-right">P&L ($)</th>
+                </tr>
+              </thead>
+              <tbody id="tbl-positions" class="divide-y divide-slate-100 dark:divide-slate-800/60 font-mono">
+                <tr>
+                  <td colspan="4" class="p-8 text-center text-slate-400 dark:text-slate-500 font-sans">No open positions</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- TAB 2: CLOSED TRADES TABLE -->
+          <div id="tab-content-closed" class="hidden flex-1 overflow-y-auto max-h-[250px]">
+            <table class="w-full text-left text-xs">
+              <thead class="text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 sticky top-0 border-b border-slate-200 dark:border-slate-800">
+                <tr>
+                  <th class="p-2 font-medium">Type</th>
+                  <th class="p-2 font-medium">Lots</th>
+                  <th class="p-2 font-medium">Price &amp; Timing (In &rarr; Out)</th>
+                  <th class="p-2 font-medium text-right">Profit ($)</th>
+                </tr>
+              </thead>
+              <tbody id="tbl-closed-positions" class="divide-y divide-slate-100 dark:divide-slate-800/60 font-mono">
+                <tr>
+                  <td colspan="4" class="p-8 text-center text-slate-400 dark:text-slate-500 font-sans">No closed trades today</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+
+    <!-- SECTION 4: DECISION LOG & STRATEGY EVENT STREAM -->
+    <div>
+      <div class="flex items-center justify-between mb-2 px-1">
+        <div class="flex items-center space-x-2">
+          <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+          <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Decision Log &amp; Strategy Event Stream</h2>
+        </div>
+        <span class="text-[11px] text-slate-400 dark:text-slate-500 font-mono">Real-Time Audit &bull; CSV Diagnostic Feed</span>
+      </div>
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm transition-colors">
+        <div class="flex items-center justify-between mb-2.5">
+          <div class="flex items-center space-x-2">
+            <span class="text-sm font-bold text-slate-900 dark:text-white">Live Trading Engine Feed</span>
+            <span class="w-2 h-2 rounded-full bg-emerald-500 pulse-dot"></span>
+          </div>
+          <span class="text-xs text-slate-400 font-mono">Recorded in CSV &bull; Streaming</span>
+        </div>
+
+        <!-- Terminal Output Window -->
+        <div id="log-terminal" class="bg-slate-950 border border-slate-800 dark:border-slate-800 rounded-xl p-3 font-mono text-xs text-slate-300 h-36 sm:h-40 overflow-y-auto space-y-1 shadow-inner">
+          <div class="text-slate-500">[System] Initializing Vantage Multi-Asset Bot UI...</div>
+        </div>
       </div>
     </div>
 
@@ -442,6 +496,21 @@
                 <option value="buy">Buy Only (Bullish)</option>
                 <option value="sell">Sell Only (Bearish)</option>
               </select>
+            </div>
+            <div>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Entry Strategy</label>
+              <select id="cfg-entry_mode" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white font-medium">
+                <option value="pullback">Pullback Rejection (Smart — Buys Dips, Sells Rallies)</option>
+                <option value="classic">Classic (Aggressive — Enters on raw MA level)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Pullback Zone Near MA ($)</label>
+              <input type="number" step="0.5" id="cfg-pullback_zone" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="default 3.00">
+            </div>
+            <div>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Rejection Confirmation ($)</label>
+              <input type="number" step="0.1" id="cfg-pullback_rejection_dist" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="default 0.60">
             </div>
             <div class="sm:col-span-2">
               <div class="flex items-center justify-between mb-1">
@@ -796,8 +865,8 @@
           openLoginModal();
         }
       } else {
-        if (btnOpenLogin) btnOpenLogin.classList.add('hidden');
-        document.getElementById('badge-mt5').onclick = null;
+        if (btnOpenLogin) btnOpenLogin.classList.remove('hidden');
+        document.getElementById('badge-mt5').onclick = openLoginModal;
 
         if (s.error_msg) {
           document.getElementById('dot-mt5').className = 'w-2.5 h-2.5 rounded-full bg-rose-500';
@@ -924,6 +993,9 @@
         const distVal = telem.current_ma > 0 ? `$${telem.dist_ma.toFixed(2)}` : '---';
         const maxDistVal = telem.max_ma_dist > 0 ? `$${telem.max_ma_dist.toFixed(2)}` : 'Unlimited';
         const waitingVal = telem.target_entry_desc || '---';
+        const sideMode = (s.config && s.config.side) ? s.config.side.toUpperCase() : 'BOTH';
+        const rMode = document.getElementById('badge-entry-mode');
+        if (rMode) rMode.innerText = sideMode;
 
         // Update Card 1
         const txtMaDist = document.getElementById('txt-ma-dist');
@@ -932,12 +1004,24 @@
         if (txtMaMax) txtMaMax.innerText = maxDistVal;
         const txtTarget = document.getElementById('txt-entry-target');
         if (txtTarget) {
-          txtTarget.innerText = waitingVal;
-          txtTarget.title = waitingVal;
-          if (telem.in_entry_zone) {
-            txtTarget.className = 'font-mono font-bold text-emerald-600 dark:text-emerald-400 truncate max-w-[130px]';
+          if (sideMode === 'BOTH' && telem.buy_target_desc && telem.sell_target_desc) {
+            const bTxt = telem.buy_ready ? 'B: Ready' : (telem.buy_target_price ? `B: <=${telem.buy_target_price.toFixed(0)}` : 'B: Watch');
+            const sTxt = telem.sell_ready ? 'S: Ready' : (telem.sell_target_price ? `S: <${telem.sell_target_price.toFixed(0)}` : 'S: Watch');
+            txtTarget.className = 'font-mono font-bold text-[10px] truncate text-right';
+            txtTarget.innerHTML = `<span class="${telem.buy_ready ? 'text-emerald-600 dark:text-emerald-400 font-black' : 'text-slate-700 dark:text-slate-300'}">${bTxt}</span> <span class="text-slate-300 dark:text-slate-600">|</span> <span class="${telem.sell_ready ? 'text-rose-600 dark:text-rose-400 font-black' : 'text-slate-700 dark:text-slate-300'}">${sTxt}</span>`;
+            txtTarget.title = `BUY: ${telem.buy_target_desc} | SELL: ${telem.sell_target_desc}`;
           } else {
-            txtTarget.className = 'font-mono font-bold text-amber-600 dark:text-amber-400 truncate max-w-[130px]';
+            let singleTxt = waitingVal;
+            if (telem.in_entry_zone) {
+              singleTxt = `${sideMode}: READY`;
+            } else if (sideMode === 'BUY' && telem.buy_target_price) {
+              singleTxt = `BUY <= ${telem.buy_target_price.toFixed(1)}`;
+            } else if (sideMode === 'SELL' && telem.sell_target_price) {
+              singleTxt = `SELL >= ${telem.sell_target_price.toFixed(1)}`;
+            }
+            txtTarget.className = telem.in_entry_zone ? 'font-mono font-bold text-emerald-600 dark:text-emerald-400 truncate text-[10px]' : 'font-mono font-bold text-amber-600 dark:text-amber-400 truncate text-[10px]';
+            txtTarget.innerText = singleTxt;
+            txtTarget.title = waitingVal;
           }
         }
 
@@ -955,18 +1039,63 @@
         }
         const rMax = document.getElementById('radar-max-dist');
         if (rMax) rMax.innerText = maxDistVal;
+
+        // RSI Status in Radar Bar: strictly oscillator boundaries (Never label as directional BULLISH/BEARISH)
+        const rRsiVal = document.getElementById('radar-rsi-val');
+        const rRsiBadge = document.getElementById('radar-rsi-badge');
+        const rsiNum = (telem.rsi !== undefined && telem.rsi !== null) ? telem.rsi : (s.bot ? s.bot.rsi : 50.0);
+        if (rRsiVal) rRsiVal.innerText = rsiNum.toFixed(1);
+        if (rRsiBadge) {
+          const obLevel = (s.config && s.config.rsi_ob) ? s.config.rsi_ob : 70.0;
+          const osLevel = (s.config && s.config.rsi_os) ? s.config.rsi_os : 30.0;
+          if (rsiNum >= obLevel) {
+            rRsiBadge.innerText = 'OVERBOUGHT';
+            rRsiBadge.className = 'px-1.5 py-0.2 rounded text-[10px] font-extrabold bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 pulse-dot';
+            rRsiBadge.title = `RSI (${rsiNum.toFixed(1)}) >= ${obLevel}: BUY entries blocked (Climax Risk)`;
+          } else if (rsiNum <= osLevel) {
+            rRsiBadge.innerText = 'OVERSOLD';
+            rRsiBadge.className = 'px-1.5 py-0.2 rounded text-[10px] font-extrabold bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border border-cyan-500/30 pulse-dot';
+            rRsiBadge.title = `RSI (${rsiNum.toFixed(1)}) <= ${osLevel}: SELL entries blocked (Floor Risk)`;
+          } else {
+            rRsiBadge.innerText = 'NORMAL';
+            rRsiBadge.className = 'px-1.5 py-0.2 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700';
+            rRsiBadge.title = `RSI (${rsiNum.toFixed(1)}) within safe bounds (${osLevel}-${obLevel}): Momentum clear for entries`;
+          }
+        }
+
         const rWait = document.getElementById('radar-waiting-for');
+        const rWaitLabel = document.getElementById('radar-waiting-label');
         if (rWait) {
-          rWait.innerText = waitingVal;
-          rWait.className = telem.in_entry_zone ? 'font-mono font-extrabold text-emerald-600 dark:text-emerald-400' : 'font-mono font-extrabold text-amber-600 dark:text-amber-400';
+          if (sideMode === 'BOTH' && telem.buy_target_desc && telem.sell_target_desc) {
+            if (rWaitLabel) rWaitLabel.innerText = 'Entry Conditions:';
+            const buyBadge = telem.buy_ready
+              ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/40 shadow-sm'
+              : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700';
+            const sellBadge = telem.sell_ready
+              ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/40 shadow-sm'
+              : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700';
+
+            rWait.className = 'font-mono inline-flex flex-wrap items-center gap-2';
+            rWait.innerHTML = `
+              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border ${buyBadge}">
+                <span class="w-2 h-2 rounded-full ${telem.buy_ready ? 'bg-emerald-500 pulse-dot' : 'bg-slate-400'}"></span>
+                <span class="font-extrabold text-emerald-600 dark:text-emerald-400">BUY:</span> ${telem.buy_target_desc}
+              </span>
+              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border ${sellBadge}">
+                <span class="w-2 h-2 rounded-full ${telem.sell_ready ? 'bg-rose-500 pulse-dot' : 'bg-slate-400'}"></span>
+                <span class="font-extrabold text-rose-600 dark:text-rose-400">SELL:</span> ${telem.sell_target_desc}
+              </span>
+            `;
+          } else {
+            if (rWaitLabel) rWaitLabel.innerText = 'Waiting For Price:';
+            rWait.className = telem.in_entry_zone ? 'font-mono font-extrabold text-emerald-600 dark:text-emerald-400' : 'font-mono font-extrabold text-amber-600 dark:text-amber-400';
+            rWait.innerText = waitingVal;
+          }
         }
 
         // Radar Dot & Headline logic
         const rDot = document.getElementById('dot-entry-radar');
         const rHead = document.getElementById('txt-entry-headline');
-        const rMode = document.getElementById('badge-entry-mode');
-        const sideMode = (s.config && s.config.side) ? s.config.side.toUpperCase() : 'BOTH';
-        if (rMode) rMode.innerText = sideMode;
 
         if (s.is_running && s.bot) {
           if (s.config && s.config.break_time) {
@@ -974,16 +1103,19 @@
             if (rHead) rHead.innerText = '☕ Break Time Active: Finishing open trades, new orders paused';
           } else if (s.bot.nopen > 0) {
             if (rDot) rDot.className = 'w-3 h-3 rounded-full bg-blue-500 flex-shrink-0 pulse-dot';
-            if (rHead) rHead.innerText = `Active Position Open (${s.bot.nopen} legs) — Tracking profit target`;
+            if (rHead) rHead.innerText = `Active Position Open (${s.bot.nopen} legs) — ${s.bot.status}`;
           } else if (s.bot.status && s.bot.status.includes('COOLDOWN')) {
             if (rDot) rDot.className = 'w-3 h-3 rounded-full bg-amber-500 flex-shrink-0 pulse-dot';
             if (rHead) rHead.innerText = `${s.bot.status} — Waiting before next entry`;
+          } else if (s.bot.status && (s.bot.status.includes('PULLBACK') || s.bot.status.includes('WAIT'))) {
+            if (rDot) rDot.className = 'w-3 h-3 rounded-full bg-indigo-500 flex-shrink-0 pulse-dot';
+            if (rHead) rHead.innerText = `${s.bot.status}`;
           } else if (telem.in_entry_zone) {
             if (rDot) rDot.className = 'w-3 h-3 rounded-full bg-emerald-500 flex-shrink-0 pulse-dot';
             if (rHead) rHead.innerText = `Price in Entry Zone — Engine armed for ${sideMode} signal`;
           } else {
             if (rDot) rDot.className = 'w-3 h-3 rounded-full bg-amber-500 flex-shrink-0 pulse-dot';
-            if (rHead) rHead.innerText = `Overextended (${distVal} > ${maxDistVal}) — Waiting for price pull back to MA`;
+            if (rHead) rHead.innerText = `${s.bot.status || `Overextended (${distVal} > ${maxDistVal}) — Waiting for price pull back to MA`}`;
           }
         } else {
           if (telem.in_entry_zone) {
@@ -999,7 +1131,12 @@
       // Bot Core Metrics
       if (s.bot) {
         const b = s.bot;
-        document.getElementById('txt-bot-status').innerText = b.status || (isRunning ? 'RUNNING' : 'IDLE');
+        const statusText = b.status || (isRunning ? 'RUNNING' : 'IDLE');
+        const statusEl = document.getElementById('txt-bot-status');
+        if (statusEl) {
+          statusEl.innerText = statusText;
+          statusEl.title = statusText;
+        }
         const currentMa = (telem && telem.current_ma > 0) ? telem.current_ma : (b.ma > 0 ? b.ma : 0);
         document.getElementById('txt-ma').innerText = currentMa > 0 ? currentMa.toFixed(2) : '---';
         const rsiEl = document.getElementById('txt-rsi');
@@ -1014,12 +1151,13 @@
           }
         }
 
-        // Trend Bias
+        // Trend Bias (250-period Moving Average macro baseline)
         const trendEl = document.getElementById('badge-trend');
         if (s.market && currentMa > 0) {
           const bullish = s.market.bid >= currentMa;
-          trendEl.innerText = bullish ? 'BULLISH' : 'BEARISH';
+          trendEl.innerText = bullish ? 'TREND: BULLISH' : 'TREND: BEARISH';
           trendEl.className = `px-1.5 py-0.5 rounded text-[10px] font-bold ${bullish ? 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400'}`;
+          trendEl.title = bullish ? `Price ($${s.market.bid.toFixed(2)}) >= MA ($${currentMa.toFixed(2)}): Macro Uptrend (Bullish)` : `Price ($${s.market.bid.toFixed(2)}) < MA ($${currentMa.toFixed(2)}): Macro Downtrend (Bearish)`;
         }
 
         // Basket P&L Color
@@ -1541,6 +1679,9 @@
         loss_recycler: document.getElementById('cfg-loss_recycler') ? document.getElementById('cfg-loss_recycler').checked : true,
         recycle_tp: parseFloat(document.getElementById('cfg-recycle_tp').value) || 1.50,
         recycle_sl: parseFloat(document.getElementById('cfg-recycle_sl').value) || 1.50,
+        entry_mode: document.getElementById('cfg-entry_mode') ? document.getElementById('cfg-entry_mode').value : 'pullback',
+        pullback_zone: parseFloat(document.getElementById('cfg-pullback_zone').value) || 3.0,
+        pullback_rejection_dist: parseFloat(document.getElementById('cfg-pullback_rejection_dist').value) || 0.6,
         break_time: document.getElementById('cfg-break_time').checked
       };
       const res = await fetch('/api/config', {

@@ -75,6 +75,9 @@ class Cfg:
     recycle_sl: float = 1.50             # Stop loss ($) on recovery scalp
     recycle_bounce_dist: float = 0.50    # Minimum price bounce ($) from bottom before entering recovery scalp
     recycle_cooldown_sec: int = 60       # Minimum seconds between recovery scalp entries
+    entry_mode: str = "classic"          # classic | pullback : pullback waits for rally/dip to MA and price rejection
+    pullback_zone: float = 3.00          # Distance ($) near MA to arm pullback entry
+    pullback_rejection_dist: float = 0.60# Distance ($) of reversal off pullback extreme to trigger entry
     break_time: bool = False             # True: finish open trades, but block new initial entries
     min_free_margin: float = 10.0        # Min free margin ($) required before allowing a new entry
     margin_buffer_pct: float = 20.0      # Required free margin safety buffer % over required margin
@@ -92,6 +95,7 @@ class Bot:
         s.peak = 0.0; s.trail_stop = 0.0; s.flip = 0; s.exposure = 0.0
         s.dist_ma = 0.0; s.rsi = 50.0; s.margin_cooldown_until = 0; s.last_order_error = ""; s.margin_reject_count = 0
         s.last_recycle_time = 0; s.recycle_extreme = 0.0
+        s.pullback_crest = 0.0; s.pullback_trough = 0.0
         s.events = []
 
     # ---- CSV decision log ----
@@ -121,6 +125,8 @@ class Bot:
             for p in ps: s.br.close(p)
             s.br.sleep(0.3)
         s.last_exit = s.br.tick().time                  # start the cooldown clock
+        s.pullback_crest = 0.0
+        s.pullback_trough = 0.0
         s.status = f"COOLDOWN {s.c.min_entry_gap_sec}s"
 
     def on_timer(s):
@@ -364,15 +370,60 @@ class Bot:
             if s.last_exit > 0 and since < c.min_entry_gap_sec:
                 s.status = f"COOLDOWN {c.min_entry_gap_sec - since}s"; return
             if s.ma > 0:
-                s.status = "SIGNAL READY"
-                if c.max_spread > 0 and (ask - bid) > c.max_spread:
-                    s.status = f"SPREAD WIDE {ask - bid:.2f}"; return
-                if bid > s.ma: d = 1
-                elif bid < s.ma: d = -1
-                else: return
-
                 dist = abs(bid - s.ma)
                 s.dist_ma = dist
+
+                if c.max_spread > 0 and (ask - bid) > c.max_spread:
+                    s.status = f"SPREAD WIDE {ask - bid:.2f}"; return
+
+                if c.entry_mode == "pullback":
+                    # PULLBACK REJECTION ENGINE: Buys dips, sells rallies off MA
+                    macro_dir = 1 if bid >= s.ma else -1
+                    if not s.allowed(macro_dir):
+                        s.pullback_crest = s.pullback_trough = 0.0
+                        s.status = f"WAIT {c.side.upper()}"
+                        return
+
+                    if macro_dir == -1: # BEARISH: Wait for rally to MA, then down-rejection
+                        s.pullback_trough = 0.0
+                        if dist <= c.pullback_zone:
+                            if s.pullback_crest == 0.0 or ask > s.pullback_crest:
+                                s.pullback_crest = ask
+                            rejection_drop = s.pullback_crest - bid
+                            if rejection_drop >= c.pullback_rejection_dist:
+                                d = -1
+                                s.pullback_crest = 0.0
+                            else:
+                                s.status = f"PULLBACK ZONE: Wait SELL Rejection (-${rejection_drop:.2f} < ${c.pullback_rejection_dist:.2f})"
+                                return
+                        else:
+                            s.pullback_crest = 0.0
+                            s.status = f"WAIT PULLBACK TO MA (${dist:.2f} > ${c.pullback_zone:.2f})"
+                            return
+
+                    else: # BULLISH: Wait for dip to MA, then up-bounce
+                        s.pullback_crest = 0.0
+                        if dist <= c.pullback_zone:
+                            if s.pullback_trough == 0.0 or bid < s.pullback_trough:
+                                s.pullback_trough = bid
+                            bounce_rise = ask - s.pullback_trough
+                            if bounce_rise >= c.pullback_rejection_dist:
+                                d = 1
+                                s.pullback_trough = 0.0
+                            else:
+                                s.status = f"PULLBACK ZONE: Wait BUY Bounce (+${bounce_rise:.2f} < ${c.pullback_rejection_dist:.2f})"
+                                return
+                        else:
+                            s.pullback_trough = 0.0
+                            s.status = f"WAIT DIP TO MA (${dist:.2f} > ${c.pullback_zone:.2f})"
+                            return
+
+                else:
+                    # CLASSIC (Direct MA cross/level)
+                    s.status = "SIGNAL READY"
+                    if bid > s.ma: d = 1
+                    elif bid < s.ma: d = -1
+                    else: return
 
                 # 1. Overextension Guard: do not buy/sell if price is stretched too far from MA
                 if c.max_ma_dist > 0 and dist > c.max_ma_dist:
@@ -396,7 +447,8 @@ class Bot:
                 if ok:
                     s.last_order_error = ""
                     s.margin_reject_count = 0
-                    s.log("ENTRY", side, "ma-signal", bid, 0.0, 0.0)
+                    sig_label = "pullback-signal" if c.entry_mode == "pullback" else "ma-signal"
+                    s.log("ENTRY", side, sig_label, bid, 0.0, 0.0)
                 else:
                     s.last_order_error = str(rc)
                     s.log("SKIP", side, f"ma-signal-failed rc={rc}", bid, 0.0, 0.0)
@@ -673,7 +725,7 @@ def run(cfg, allow_real):
                 if time.time() - t_panel >= 1.0:
                     t_panel = time.time(); bot.on_timer()
                     while shown < len(bot.events): print("\n  >> " + bot.events[shown]); shown += 1
-                    print(f"\r{time.strftime('%H:%M:%S')} {bot.status[:34]:<34} legs {bot.nopen}/{cfg.grid_max_legs} basket ${bot.basket:+.2f} "
+                    print(f"\r{time.strftime('%H:%M:%S')} {bot.status:<55} legs {bot.nopen}/{cfg.grid_max_legs} basket ${bot.basket:+.2f} "
                           f"peak/lock ${bot.peak:.2f}/${bot.trail_stop:.2f} daily ${bot.daily:+.2f} ma {bot.ma:.2f} bid {tk.bid:.2f}  ", end="", flush=True)
             except KeyboardInterrupt: raise
             except Exception as e:
@@ -859,6 +911,16 @@ def selftest():
     check("loss recycler opens recovery scalp on bounce", len(b.pos) == 3 and any(p["magic"] == cfg.magic_recovery for p in b.pos))
     step(b, bot, 3982.0)              # scalp profit +1.10 >= recycle_tp 1.00 -> closes scalp and prunes ticket 1!
     check("loss recycler closes scalp and prunes worst leg", len(b.pos) == 1 and b.pos[0]["ticket"] == 2 and any("RECYCLE_WIN" in e for e in bot.events))
+
+    # 8k. Pullback Rejection Entry: blocks selling at the bottom, waits for pullback to MA and price rejection
+    cfg, b, bot = mk(entry_mode="pullback", pullback_zone=3.0, pullback_rejection_dist=0.60)
+    b.ma_v = 4000.0; b.bid = 3990.0   # price 10 below MA > 3.0 zone
+    step(b, bot)
+    check("pullback mode: blocks sell when price is far from MA", not b.pos and "WAIT PULLBACK TO MA" in bot.status)
+    step(b, bot, 3998.0)              # enters 3.0 zone near MA, tracks crest (ask=3998.3)
+    check("pullback mode: in zone, tracking crest", not b.pos and "PULLBACK ZONE" in bot.status)
+    step(b, bot, 3997.2)              # price rejected down by 1.10 >= 0.60 -> SELL triggered!
+    check("pullback mode: fires SELL on rejection from MA", len(b.pos) == 1 and b.pos[0]["dir"] == -1 and any("pullback-signal" in e for e in bot.events))
 
     # 9. CSV logger writes a header + rows
     d = tempfile.mkdtemp(); global HERE
