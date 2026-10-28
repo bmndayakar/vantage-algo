@@ -198,6 +198,90 @@ The following real-time failures occurred during live testing and trading sessio
 
 ---
 
+### Case 17: Proportional Lot-Size Auto-Scaling & Post-Loss Anti-Rally Pause
+* **The Issue**: When testing with `lots = 0.10` instead of `0.01` during a \$43 Gold rally, the bot incurred rapid successive losses (86 stop-outs, -\$727.38).
+* **The Root Cause**:
+  1. **Fixed Dollar vs Volume Distortion**: On XAUUSD, a \$1.00 move equals \$1.00 P&L on 0.01 lots, but equals \$10.00 P&L on 0.10 lots. Fixed dollar thresholds (`grid_step_loss = $10.00`, `grid_sl = $20.00`) meant that on 0.10 lots, normal 50-cent to \$1.00 price noise tripped Leg 2 and Leg 3 immediately, and hit `grid_sl = $20` after only a 66-cent move across 3 legs.
+  2. **Anti-Chop Cooldown Insufficiency in Violent Trends**: After stopping out, the bot only waited 15 seconds (`min_entry_gap_sec = 15`) before immediately opening another position directly into the runaway trend, creating an 86-cycle loss spiral.
+* **The Resolution**:
+  1. **Point 1 (Proportional Lot Auto-Scaling)**:
+     - Added `scale_by_lots: bool = True` and `base_lot: float = 0.01` to `Cfg`.
+     - Calculated dynamic lot multiplier: $\text{lot\_mult} = \frac{\text{lots}}{\text{base\_lot}}$ (e.g. 10.0x for 0.10 lots).
+     - Scaled all dollar-based price distance thresholds dynamically via property getters:
+       `eff_grid_step_loss`, `eff_grid_sl`, `eff_trail_arm`, `eff_trail_min_lock`, `eff_grid_tp`, `eff_target_profit`, `eff_bailout_target`, `eff_recycle_tp`, `eff_recycle_sl`, and `eff_stop_loss`.
+     - Preserves exact market price distances ($10 Gold move per grid step, $1 move for trail arm, $0.20 move for TP target) invariant of lot size.
+  2. **Point 2 (Extended Post-Loss Anti-Rally Pause)**:
+     - Added `loss_cooldown_sec: int = 180` (3 minutes default).
+     - Updated catastrophic stop-loss triggers (`grid-sl`, `trend-inval`, `equity-risk-sl`, `stop-loss`, and losing `time-hard`) to call `close_all(loss_pause=True)`.
+     - Enforced `s.loss_cooldown_until = tc + loss_cooldown_sec` which halts new entries with status `PAUSED AFTER LOSS <rem>s` to allow the runaway market to calm before re-engaging.
+  3. **UI Integration**:
+     - Added `Proportional Lot Auto-Scaling` and `Post-Loss Pause` controls to Settings modal.
+     - Live preview calculation in margin box displays effective scaled values.
+     - Red/rose pulsing visual badge in header telemetry and Entry Radar whenever a post-loss pause is active.
+     - Self-test suite expanded to 66 passing checks covering scaling math, grid step spacing on 0.10 lots, and post-loss cooldown enforcement.
+
+---
+
+### Case 18: Lever 1 — Empirical Trade Excursion Telemetry (MAE & MFE)
+* **The Inquiry & Context**: User explored whether 0.5-second clock logs could make the bot "almost no loss". 
+* **The Architectural Insight**:
+  1. Fixed time sampling (0.5s) produces redundant flat logs during quiet sessions and misses 90% of micro-ticks during fast news bursts; sub-second indicators result in spread churn.
+  2. The pursuit of "zero loss" leads to runaway martingales. Sustainable quantitative profitability requires **Positive Mathematical Expectancy** with controlled, asymmetric losses.
+  3. Real algorithmic optimization requires **Event-Driven Trade Excursions**: Maximum Favorable Excursion (MFE: highest unrealized profit) and Maximum Adverse Excursion (MAE: deepest unrealized drawdown).
+* **The Resolution**:
+  1. Updated `Bot` class to track `s.peak` (MFE) and `s.mae` (MAE) continuously on every incoming tick.
+  2. Added `mfe,mae` columns to `up_down_tracker_decisions_py.csv`.
+  3. Added persistent excursion storage in `trade_excursions.json` managed by `BotManager`.
+  4. Updated Open and Closed positions tables in `templates/index.html` to display live and historical `Peak (+$MFE)` and `Dip (-$MAE)` with explanatory tooltips.
+  5. Established [`DEV_JOURNAL.md`](file:///c:/Users/dayam/Documents/vantage-algo/DEV_JOURNAL.md) documenting the complete development chronicle and engineering journey.
+  6. Self-test suite expanded to **69 passing checks**.
+
+
+### Case 19: 100% MT5 API Ground-Truth Synchronization (Positions & Deal Lifecycle Reconstruction)
+* **The Inquiry & Context**: User noticed that open and closed trades in the web app were not matching trade history in MT5 desktop, and proposed: *"Is it a good idea to always get that data from mt5? What i am proposing is that get those trade details from mt5 always whether open or closed."*
+* **The Architectural Insight**:
+  1. **MT5 as Ground Truth**: In algorithmic trading, the broker terminal is the single authoritative source of truth for executions, volume fills, commissions, swaps, and realized net PnL.
+  2. **Why Discrepancies Existed Previously**:
+     - **Missing Ticket Numbers**: MT5 desktop indexes every position by its unique 64-bit Ticket ID, whereas the web dashboard omitted ticket IDs, making row-by-row matching impossible.
+     - **48-Hour Hardcoded Query Window**: Web app only queried deals from `now - 2 days`. If a trade was opened 3 days ago and closed today, its entry deal was omitted from the query, displaying `$0.00` open price and `0s` duration.
+     - **Multi-Fill Scale-In Overwrite**: The grid recovery engine often scales into a position across multiple legs. The previous `{d.position_id: d}` dictionary comprehension dropped earlier entry deals and distorted the volume-weighted open price.
+     - **Missing Asset Symbol**: Closed trade records omitted `symbol`.
+* **The Resolution**:
+  1. Built `reconstruct_closed_positions()`: Reconstructs closed positions by aggregating all deals sharing a `position_id`, computing volume-weighted entry fill prices, volume-weighted exit fill prices, net realized PnL (`profit + swap + commission`), and exact durations.
+  2. Dynamic Missing Entry Fallback: If an entry deal occurred outside the queried date window, queries `mt5.history_deals_get(position=pos_id)` on-demand.
+  3. Interactive Period Filter: Added `[ Today | 3D | 7D | 30D | All ]` history selector in `templates/index.html` backed by `POST /api/history_period` and WebSocket updates.
+  4. UI Enhancements: Added `#Ticket` monospace labels, asset symbols, SL/TP tags, and Net PnL tooltips with commission/swap breakdowns.
+  5. Verified with 4 unit tests in `scratch/test_mt5_sync.py` and all 69 core bot self-tests passing.
+---
+
+
+### Case 20: Session Goal Isolation, Broker Server Timezone Midnight & UI Layout Rebalancing
+* **The Inquiry & Context**:
+  1. *"without executing trades, why is it showing progress in daily goal and showing 17 deals close."*
+  2. *"Also the under buttons in history 3D, 3D, today etc are not working."*
+  3. *"Another thing we can work on is to adjust the size of session P&L trajectory section and trades section. We don't need such long session trajectory occupying the screen."*
+* **The Root Causes**:
+  - **Daily Goal Over-counting**: The bot engine queried MT5 broker deals for the entire calendar day to track `daily_profit()`. If the user ran tests earlier in the day, the bot booted up with `$15.20 / $20` and `17 Deals Closed`, locking into `GOAL REACHED` or causing confusion.
+  - **Timezone Drift on "Today" Filter**: In early morning IST (UTC+5:30), the MT5 broker server (EET/UTC+2) was still on the previous calendar day. Calculating midnight using local machine time created a start date 1.5–3.5 hours in the *future* relative to the broker server, returning zero deals.
+  - **Screen Real Estate Imbalance**: Section 3 dedicated 2/3 width to the trajectory chart, crowding the open and closed trade ledgers.
+* **The Resolution**:
+  1. **Session-Isolated Tracking**:
+     - Added `s.session_profit = 0.0` and `s.session_deals = 0` in `Bot.__init__` and `BotManager`.
+     - Incremented on `close_all()` / basket close.
+     - Card 5 now displays active `Session Goal` starting at `$0.00` and `0 Deals`, with cumulative MT5 calendar day stats displayed cleanly in the subtitle: `Day: $XX.XX (17)`.
+     - Added `[ ↺ Reset ]` button in the UI backed by `POST /api/reset_goal`.
+  2. **Broker Server Midnight Date Alignment**:
+     - Formulated `server_midnight` using UTC plus `server_offset`:
+       `server_midnight = (datetime.utcnow() + timedelta(hours=server_offset)).replace(hour=0, minute=0, second=0)`
+     - Aligned history query for `"today"` to `server_midnight`, ensuring consistent retrieval of all trades executed on the broker's current day.
+     - Added optimistic button styling for instant visual feedback on click.
+  3. **Section 3 Rebalancing**:
+     - Expanded Positions & Trades card to `lg:col-span-2` (wide 2/3) with `max-h-[285px]` scrollable container.
+     - Compacted Session P&L Trajectory chart to `lg:col-span-1` (compact 1/3) with height reduced to `160px–175px`.
+  4. Verified with full test suite: 69/69 self-test pass, 4/4 MT5 sync pass.
+
+---
+
 ## 3. Comprehensive Feature Catalog
 
 ### 1. Strategy Engines (`up_down_tracker_win_bot_xauusd.py`)

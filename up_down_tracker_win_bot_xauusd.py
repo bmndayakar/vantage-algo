@@ -33,6 +33,9 @@ class Cfg:
     symbol: str = "XAUUSD"
     tf: str = "M1"                       # chart timeframe the MA runs on
     lots: float = 0.01
+    scale_by_lots: bool = True           # Auto-scale dollar thresholds proportionally with lot size
+    base_lot: float = 0.01               # Reference lot size for baseline dollar parameters
+    loss_cooldown_sec: int = 180         # Extended pause (s) after stop loss before allowing new entries
     target_profit: float = 0.20
     daily_goal: float = 20.00
     basket_target: float = 0.10
@@ -85,6 +88,39 @@ class Cfg:
     enable_log: bool = True
     log_file: str = "up_down_tracker_decisions_py.csv"   # separate from the EA's CSV
 
+    @property
+    def lot_mult(self) -> float:
+        if self.scale_by_lots and self.base_lot > 0:
+            return max(0.01, self.lots / self.base_lot)
+        return 1.0
+
+    @property
+    def eff_grid_step_loss(self) -> float: return self.grid_step_loss * self.lot_mult
+    @property
+    def eff_grid_sl(self) -> float: return self.grid_sl * self.lot_mult
+    @property
+    def eff_trail_arm(self) -> float: return self.trail_arm * self.lot_mult
+    @property
+    def eff_trail_min_lock(self) -> float: return self.trail_min_lock * self.lot_mult
+    @property
+    def eff_trail_min_give(self) -> float: return self.trail_min_give * self.lot_mult
+    @property
+    def eff_basket_target(self) -> float: return self.basket_target * self.lot_mult
+    @property
+    def eff_grid_tp(self) -> float: return self.grid_tp * self.lot_mult
+    @property
+    def eff_target_profit(self) -> float: return self.target_profit * self.lot_mult
+    @property
+    def eff_bailout_target(self) -> float: return self.bailout_target * self.lot_mult
+    @property
+    def eff_recycle_tp(self) -> float: return self.recycle_tp * self.lot_mult
+    @property
+    def eff_recycle_sl(self) -> float: return self.recycle_sl * self.lot_mult
+    @property
+    def eff_stop_loss(self) -> float: return self.stop_loss * self.lot_mult
+    @property
+    def eff_soft_cap_profit(self) -> float: return self.soft_cap_profit * self.lot_mult
+
 
 # ============================== BOT (line-for-line port of OnTick) ==============================
 class Bot:
@@ -92,42 +128,55 @@ class Bot:
         s.c, s.br = cfg, br
         s.status = "Initializing..."; s.basket = 0.0; s.last_exit = 0; s.open_time = 0; s.ma = 0.0
         s.daily = 0.0; s.deals = 0; s.nopen = 0; s.tp_price = 0.0; s.dir = 0
-        s.peak = 0.0; s.trail_stop = 0.0; s.flip = 0; s.exposure = 0.0
-        s.dist_ma = 0.0; s.rsi = 50.0; s.margin_cooldown_until = 0; s.last_order_error = ""; s.margin_reject_count = 0
+        s.session_profit = 0.0; s.session_deals = 0
+        s.peak = 0.0; s.mae = 0.0; s.trail_stop = 0.0; s.flip = 0; s.exposure = 0.0
+        s.dist_ma = 0.0; s.rsi = 50.0; s.margin_cooldown_until = 0; s.loss_cooldown_until = 0; s.last_order_error = ""; s.margin_reject_count = 0
         s.last_recycle_time = 0; s.recycle_extreme = 0.0
         s.pullback_crest = 0.0; s.pullback_trough = 0.0
         s.events = []
 
     # ---- CSV decision log ----
-    def log(s, ev, side, detail, price, basket, realized):
-        c = s.c; s.events.append(f"{ev} {side} {detail} basket={basket:.2f}")
-        if not c.enable_log: return
-        path = os.path.normpath(os.path.join(HERE, "..", "Files", c.log_file))
+    def log(s, ev, side, detail, price, basket, realized, mfe=None, mae=None):
+        mfe_val = s.peak if mfe is None else mfe
+        mae_val = s.mae if mae is None else mae
+        exc_str = f" MFE={mfe_val:+.2f} MAE={mae_val:+.2f}" if (mfe_val != 0.0 or mae_val != 0.0) else ""
+        s.events.append(f"{ev} {side} {detail} basket={basket:.2f}{exc_str}")
+        if not s.c.enable_log: return
+        path = os.path.normpath(os.path.join(HERE, "..", "Files", s.c.log_file))
         try:
             new = not os.path.exists(path) or os.path.getsize(path) == 0
             os.makedirs(os.path.dirname(path), exist_ok=True)
             tk = s.br.tick(); bid, ask, tc = tk.bid, tk.ask, tk.time
             age = int((tc - s.open_time) / 60) if s.open_time > 0 else 0
             with open(path, "a", encoding="ascii", errors="replace") as f:
-                if new: f.write("time,event,side,detail,price,ma,spread,basket,openPos,ageMin,realized,dailyProfit\n")
+                if new: f.write("time,event,side,detail,price,ma,spread,basket,openPos,ageMin,realized,dailyProfit,mfe,mae\n")
                 f.write(",".join([dt.datetime.fromtimestamp(tc, dt.timezone.utc).strftime("%Y.%m.%d %H:%M:%S"), ev, side, detail,
                                   f"{price:.2f}", f"{s.ma:.2f}", f"{ask - bid:.2f}", f"{basket:.2f}", str(s.nopen), str(age),
-                                  f"{realized:.2f}", f"{s.daily:.2f}"]) + "\n")
+                                  f"{realized:.2f}", f"{s.daily:.2f}", f"{mfe_val:.2f}", f"{mae_val:.2f}"]) + "\n")
         except OSError:
             pass
 
     def allowed(s, d): return s.c.side == "both" or d == (1 if s.c.side == "buy" else -1)
 
-    def close_all(s):
+    def close_all(s, loss_pause: bool = False):
+        if s.basket != 0:
+            s.session_profit += s.basket
+            s.session_deals += max(1, s.nopen)
         for _ in range(10):
             ps = s.br.positions()
             if not ps: break
             for p in ps: s.br.close(p)
             s.br.sleep(0.3)
-        s.last_exit = s.br.tick().time                  # start the cooldown clock
+        tk = s.br.tick()
+        tc = tk.time if tk else int(time.time())
+        s.last_exit = tc                  # start the cooldown clock
         s.pullback_crest = 0.0
         s.pullback_trough = 0.0
-        s.status = f"COOLDOWN {s.c.min_entry_gap_sec}s"
+        if loss_pause and s.c.loss_cooldown_sec > 0:
+            s.loss_cooldown_until = tc + s.c.loss_cooldown_sec
+            s.status = f"PAUSED AFTER LOSS {s.c.loss_cooldown_sec}s"
+        else:
+            s.status = f"COOLDOWN {s.c.min_entry_gap_sec}s"
 
     def on_timer(s):
         s.daily, s.deals = s.br.daily_profit()
@@ -164,9 +213,9 @@ class Bot:
             tv, ts = s.br.tick_value_size()
             per_unit = (tv / ts) * c.lots * s.nopen if ts > 0 else 0
             if c.bailout_on_max_legs and s.nopen >= c.grid_max_legs:
-                tgt = c.bailout_target
+                tgt = c.eff_bailout_target
             else:
-                tgt = c.grid_tp if c.grid_sessions else c.basket_target
+                tgt = c.eff_grid_tp if c.grid_sessions else c.eff_basket_target
             if per_unit > 0: s.tp_price = bid + s.dir * (tgt - total) / per_unit
         else:
             s.tp_price = 0.0
@@ -175,7 +224,7 @@ class Bot:
         if rec_pos:
             rp = rec_pos[0]
             rec_pnl = rp.profit + rp.swap
-            if rec_pnl >= c.recycle_tp:
+            if rec_pnl >= c.eff_recycle_tp:
                 s.br.close(rp)
                 worst_pos = min(grid_pos, key=lambda p: p.profit + p.swap) if grid_pos else None
                 if worst_pos and (worst_pos.profit + worst_pos.swap) < 0:
@@ -189,7 +238,7 @@ class Bot:
                     s.status = f"RECYCLED: Scalp Win (+${rec_pnl:.2f})"
                 s.last_recycle_time = tc
                 return
-            elif rec_pnl <= -c.recycle_sl:
+            elif rec_pnl <= -c.eff_recycle_sl:
                 s.br.close(rp)
                 s.log("RECYCLE_STOP", "BUY" if s.dir > 0 else "SELL", f"scalp SL hit -${abs(rec_pnl):.2f}", bid, total, rec_pnl)
                 s.status = f"RECYCLER SCALP SL (-${abs(rec_pnl):.2f})"
@@ -228,9 +277,9 @@ class Bot:
             s.recycle_extreme = 0.0
 
         # 1c. MAX-LEGS BAILOUT EXIT (Fast escape when stacked at max capacity)
-        if c.grid_sessions and c.bailout_on_max_legs and s.nopen >= c.grid_max_legs and total >= c.bailout_target:
+        if c.grid_sessions and c.bailout_on_max_legs and s.nopen >= c.grid_max_legs and total >= c.eff_bailout_target:
             s.status = f"GRID x{s.nopen} BAILOUT EXIT (${total:+.2f})"
-            s.log("CLOSE", "BUY" if s.dir > 0 else "SELL", f"max-legs-bailout target={c.bailout_target:.2f}", bid, total, total)
+            s.log("CLOSE", "BUY" if s.dir > 0 else "SELL", f"max-legs-bailout target={c.eff_bailout_target:.2f}", bid, total, total)
             s.close_all()
             return
 
@@ -240,7 +289,7 @@ class Bot:
             if dist_wrong >= c.trend_stop_dist:
                 s.status = f"TREND INVALIDATED (${dist_wrong:.2f} past MA)"
                 s.log("CLOSE", "BUY" if s.dir > 0 else "SELL", f"trend-inval dist={dist_wrong:.2f}", bid, total, total)
-                s.close_all()
+                s.close_all(loss_pause=True)
                 return
 
         # 1d. EQUITY RISK STOP (Guarantees max drawdown % per basket on any account size)
@@ -249,19 +298,24 @@ class Bot:
             if total <= -max_eq_loss:
                 s.status = f"EQUITY RISK STOP (-${abs(total):.2f} >= {c.max_equity_risk_pct:.0f}%)"
                 s.log("CLOSE", "BUY" if s.dir > 0 else "SELL", f"equity-risk-sl limit={max_eq_loss:.2f}", bid, total, total)
-                s.close_all()
+                s.close_all(loss_pause=True)
                 return
 
-        # 1e. PROFIT-PEAK TRAIL
-        if s.nopen == 0: s.peak = 0.0; s.trail_stop = 0.0
-        elif total > s.peak: s.peak = total
-        if c.trail_on and s.nopen > 0 and s.peak >= c.trail_arm:
-            give = max(s.peak * c.trail_give_frac, c.trail_min_give)
+        # 1e. PROFIT-PEAK TRAIL & EXCURSION TRACKER (MFE / MAE)
+        if s.nopen == 0:
+            s.peak = 0.0
+            s.mae = 0.0
+            s.trail_stop = 0.0
+        else:
+            if total > s.peak: s.peak = total
+            if total < s.mae: s.mae = total
+        if c.trail_on and s.nopen > 0 and s.peak >= c.eff_trail_arm:
+            give = max(s.peak * c.trail_give_frac, c.eff_trail_min_give)
             if c.trail_atr_k > 0:
                 tv, ts = s.br.tick_value_size(); atr = s.br.atr()
                 if ts > 0 and atr is not None:
                     give = max(give, c.trail_atr_k * atr * (tv / ts) * c.lots * s.nopen)
-            s.trail_stop = max(s.peak - give, c.trail_min_lock)
+            s.trail_stop = max(s.peak - give, c.eff_trail_min_lock)
             if total <= s.trail_stop:
                 d = s.dir
                 s.log("CLOSE", "BUY" if d > 0 else "SELL", "trail-exit", bid, total, total)
@@ -272,31 +326,31 @@ class Bot:
             return
 
         # 2. basket exit (single-leg / non-grid only)
-        if (not c.trail_on) and (not c.grid_sessions) and s.nopen > 0 and total >= c.basket_target:
+        if (not c.trail_on) and (not c.grid_sessions) and s.nopen > 0 and total >= c.eff_basket_target:
             s.log("CLOSE", "-", "basket-target", bid, total, total); s.close_all(); return
 
         # 2b. SOFT TIME CAP: only exits at >= soft_cap_profit
         if s.nopen > 0 and s.open_time > 0:
             age_min = int((tc - s.open_time) / 60)
-            if c.soft_cap_min > 0 and age_min >= c.soft_cap_min and total >= c.soft_cap_profit:
+            if c.soft_cap_min > 0 and age_min >= c.soft_cap_min and total >= c.eff_soft_cap_profit:
                 s.status = "TIME CAP: SOFT"
                 s.log("CLOSE", "-", "time-soft", bid, total, total); s.close_all(); return
 
         # 2c. GRID SESSIONS (owns the basket; never falls through)
         if c.grid_sessions and s.nopen > 0:
             if c.bailout_on_max_legs and s.nopen >= c.grid_max_legs:
-                s.status = f"GRID x{s.nopen} (BAILOUT @ ${c.bailout_target:+.2f})"
+                s.status = f"GRID x{s.nopen} (BAILOUT @ ${c.eff_bailout_target:+.2f})"
             else:
                 s.status = f"GRID x{s.nopen}"
-            if (not c.trail_on) and total >= c.grid_tp:
+            if (not c.trail_on) and total >= c.eff_grid_tp:
                 s.log("CLOSE", "-", "grid-tp", bid, total, total); s.close_all(); return
-            if c.grid_sl > 0 and total <= -c.grid_sl:
-                s.log("CLOSE", "-", "grid-sl", bid, total, total); s.close_all(); return
+            if c.eff_grid_sl > 0 and total <= -c.eff_grid_sl:
+                s.log("CLOSE", "-", "grid-sl", bid, total, total); s.close_all(loss_pause=True); return
             if c.hard_cap_hours > 0 and s.open_time > 0 and (tc - s.open_time) / 3600.0 >= c.hard_cap_hours:
-                s.log("CLOSE", "-", "time-hard", bid, total, total); s.close_all(); return
-            if (not c.trail_on) and s.nopen == 1 and total >= c.target_profit:
+                s.log("CLOSE", "-", "time-hard", bid, total, total); s.close_all(loss_pause=(total < 0)); return
+            if (not c.trail_on) and s.nopen == 1 and total >= c.eff_target_profit:
                 s.log("CLOSE", "-", "scalp-tp", bid, total, total); s.close_all(); return
-            if s.nopen < c.grid_max_legs and total <= -(s.nopen * c.grid_step_loss):
+            if s.nopen < c.grid_max_legs and total <= -(s.nopen * c.eff_grid_step_loss):
                 if tc < s.margin_cooldown_until:
                     rem = s.margin_cooldown_until - tc
                     err_msg = f": {s.last_order_error}" if s.last_order_error else ""
@@ -328,10 +382,10 @@ class Bot:
         for d, v, name in ((1, buy_p, "BUY"), (-1, sell_p, "SELL")):
             if (has_buy and not has_sell and d > 0) or (has_sell and not has_buy and d < 0):
                 s.status = f"MONITORING {name}"
-                if (not c.trail_on) and v >= c.target_profit:
+                if (not c.trail_on) and v >= c.eff_target_profit:
                     s.log("CLOSE", name, "scalp-tp", bid, total, total); s.close_all(); return
-                if c.stop_loss > 0 and v <= -c.stop_loss:
-                    s.log("CLOSE", name, "stop-loss", bid, total, total); s.close_all(); return
+                if c.eff_stop_loss > 0 and v <= -c.eff_stop_loss:
+                    s.log("CLOSE", name, "stop-loss", bid, total, total); s.close_all(loss_pause=True); return
 
         # 4. NEW ENTRY SIGNAL
         if s.nopen == 0:
@@ -342,6 +396,11 @@ class Bot:
                     s.status = f"PAUSED (INSUFFICIENT MARGIN): {s.last_order_error}. Please reduce lot size in Settings (⚙️)."
                 else:
                     s.status = f"MARGIN COOLDOWN {rem}s{err_msg}"
+                return
+            if tc < s.loss_cooldown_until:
+                rem = s.loss_cooldown_until - tc
+                s.status = f"PAUSED AFTER LOSS {rem}s"
+                s.flip = 0
                 return
             if c.break_time: s.status = "☕ BREAK TIME (Tracking, no entries)"; s.flip = 0; return
             if s.daily >= c.daily_goal: s.status = "GOAL REACHED"; s.flip = 0; return
@@ -698,8 +757,8 @@ class MT5Broker:
                           deviation=50, magic=s.c.magic, comment="udt-py", type_time=m.ORDER_TIME_GTC, type_filling=s._fill()))
 
     def daily_profit(s):
-        m = s.mt5; tc = s.tick().time; now = tc + s.c.server_offset * 3600
-        mid = now - now % 86400 - s.c.server_offset * 3600          # same formula as CalculateStatistics()
+        m = s.mt5; tk = s.tick(); tc = tk.time if tk else 0
+        mid = tc - (tc % 86400) if tc > 0 else 0
         u = dt.datetime.now(dt.timezone.utc)
         ds = m.history_deals_get(u - dt.timedelta(days=3), u + dt.timedelta(days=1)) or ()
         sel = [d for d in ds if d.magic in s.magics and d.entry == m.DEAL_ENTRY_OUT and d.time >= mid]
@@ -739,7 +798,9 @@ def run(cfg, allow_real):
 # ============================== SELF-TEST (simulated broker, no MT5) ==============================
 class FakeBroker:
     """Gold at $1 P&L per $1 move per 0.01 lot. Price/MA/clock are set by the test."""
-    def __init__(s): s.bid = 4000.0; s.spread = 0.3; s.t = 1_000_000; s.ma_v = 3990.0; s.pos = []; s.n = 0; s.fail = False; s.atr_v = 0.5; s.sleeps = 0; s.dp = 0.0; s.ma_ago_v = 3980.0; s.rsi_v = 50.0; s.margin_fail = False
+    def __init__(s, cfg=None):
+        s.c = cfg or Cfg()
+        s.bid = 4000.0; s.spread = 0.3; s.t = 1_000_000; s.ma_v = 3990.0; s.pos = []; s.n = 0; s.fail = False; s.atr_v = 0.5; s.sleeps = 0; s.dp = 0.0; s.ma_ago_v = 3980.0; s.rsi_v = 50.0; s.margin_fail = False
     def tick(s): return Tick(s.bid, s.bid + s.spread, s.t, s.t * 1000)
     def ma(s): return s.ma_v
     def ma_ago(s, k): return s.ma_ago_v
@@ -760,7 +821,8 @@ class FakeBroker:
         s.n += 1; s.pos.append(dict(ticket=s.n, dir=d, entry=(s.bid + s.spread) if d > 0 else s.bid, time=s.t, magic=magic if magic is not None else 123790)); return True, 10009
     def close(s, p): s.pos = [q for q in s.pos if q["ticket"] != p.ticket]
     def positions(s):
-        return [Pos(q["ticket"], q["dir"], ((s.bid - q["entry"]) if q["dir"] > 0 else (q["entry"] - (s.bid + s.spread))) * 1.0, 0.0, q["time"], q.get("magic", 123790)) for q in s.pos]
+        pu = (1.0 / 0.01) * s.c.lots if s.c.lots > 0 else 1.0
+        return [Pos(q["ticket"], q["dir"], ((s.bid - q["entry"]) if q["dir"] > 0 else (q["entry"] - (s.bid + s.spread))) * pu, 0.0, q["time"], q.get("magic", 123790)) for q in s.pos]
 
 
 def selftest():
@@ -772,7 +834,7 @@ def selftest():
         if not cond: raise SystemExit(1)
         n_ok += 1
     def mk(**kw):
-        cfg = Cfg(enable_log=False, **kw); b = FakeBroker(); return cfg, b, Bot(cfg, b)
+        cfg = Cfg(enable_log=False, **kw); b = FakeBroker(cfg); return cfg, b, Bot(cfg, b)
     def step(b, bot, price=None, dt_s=1):
         if price is not None: b.bid = price
         b.t += dt_s; bot.on_tick()
@@ -923,6 +985,39 @@ def selftest():
     step(b, bot, 3997.2)              # price rejected down by 1.10 >= 0.60 -> SELL triggered!
     check("pullback mode: fires SELL on rejection from MA", len(b.pos) == 1 and b.pos[0]["dir"] == -1 and any("pullback-signal" in e for e in bot.events))
 
+    # 8l. Proportional Lot-Size Auto-Scaling (Point 1)
+    cfg10 = Cfg(lots=0.10, base_lot=0.01, scale_by_lots=True)
+    check("lot_mult scales 10x for 0.10 lots", abs(cfg10.lot_mult - 10.0) < 1e-9)
+    check("eff_grid_step_loss scales to $100 for 0.10 lots", abs(cfg10.eff_grid_step_loss - 100.0) < 1e-9)
+    check("eff_grid_sl scales to $2000 for 0.10 lots", abs(cfg10.eff_grid_sl - 2000.0) < 1e-9)
+    check("eff_trail_arm scales to $10 for 0.10 lots", abs(cfg10.eff_trail_arm - 10.0) < 1e-9)
+    check("eff_bailout_target scales to $0.50 for 0.10 lots", abs(cfg10.eff_bailout_target - 0.50) < 1e-9)
+    cfg, b, bot = mk(lots=0.10)
+    step(b, bot)                      # 1 BUY @ 4000.3 (0.10 lot = $10/dollar move)
+    step(b, bot, 3999.0)              # Gold drops $1.30 -> loss -$13.00. Without scaling, triggers leg 2 at -$10.
+    check("lot auto-scaling: -$13 loss does not trip scaled -$100 grid step on 0.10 lot", len(b.pos) == 1)
+    step(b, bot, 3990.0)              # Gold drops $10.30 -> loss -$103.00 <= -$100.
+    check("lot auto-scaling: grid leg 2 triggers only after full $10 move (-$100)", len(b.pos) == 2)
+
+    # 8m. Extended Post-Loss Cooldown / Anti-Rally Pause (Point 2)
+    cfg, b, bot = mk(grid_sl=20.0, loss_cooldown_sec=180)
+    step(b, bot)                      # BUY @ 4000.3
+    step(b, bot, 3970.0)              # loss -$30.30 <= -grid_sl (-$20) -> SL exit!
+    check("grid-sl exit triggers post-loss pause", not b.pos and bot.loss_cooldown_until == b.t + 180)
+    check("bot status reflects post-loss pause", "PAUSED AFTER LOSS" in bot.status)
+    step(b, bot, 4005.0, dt_s=30)     # 30s elapsed (< 180s). Price above MA.
+    check("re-entry blocked during 180s post-loss pause", not b.pos and "PAUSED AFTER LOSS" in bot.status)
+    step(b, bot, 4005.0, dt_s=155)    # total 185s elapsed (> 180s).
+    check("re-entry allowed after post-loss pause completes", len(b.pos) == 1)
+
+    # 8n. Trade Excursion Telemetry: MAE & MFE Tracking (Lever 1)
+    cfg, b, bot = mk()
+    step(b, bot)                      # 1 BUY @ 4000.3
+    step(b, bot, 4002.3)              # profit +$2.00 -> peak/MFE = +$2.00
+    step(b, bot, 3998.0)              # profit -$2.30 -> mae = -$2.30
+    check("MFE tracks peak positive excursion (+$2.00)", abs(bot.peak - 2.0) < 1e-9)
+    check("MAE tracks deepest adverse excursion (-$2.30)", abs(bot.mae - (-2.3)) < 1e-9)
+
     # 9. CSV logger writes a header + rows
     d = tempfile.mkdtemp(); global HERE
     old = HERE; HERE = os.path.join(d, "Experts")
@@ -930,6 +1025,7 @@ def selftest():
     f = os.path.join(d, "Files", cfg.log_file); HERE = old
     txt = open(f).read().splitlines()
     check("CSV log has header + ENTRY row", txt[0].startswith("time,event,side") and "ma-signal" in txt[1])
+    check("CSV log header includes mfe,mae excursions", "mfe,mae" in txt[0])
 
     # 10. backtest machinery on a synthetic random walk (needs numpy)
     try:
@@ -1099,12 +1195,12 @@ class BTBot(Bot):
     """Same Bot, but decisions are captured as structured baskets instead of CSV rows."""
     def __init__(s, cfg, br):
         super().__init__(cfg, br); s.baskets = []; s.reason = ""; s.max_legs = 0; s.mae = 0.0; s.skips = 0
-    def log(s, ev, side, detail, price, basket, realized):
+    def log(s, ev, side, detail, price, basket, realized, mfe=None, mae=None):
         if ev == "CLOSE": s.reason = detail
         elif ev == "SKIP": s.skips += 1
-    def close_all(s):
+    def close_all(s, loss_pause: bool = False):
         peak = s.peak; s.mae = min(s.mae, s.basket); legs = max(s.max_legs, s.nopen); t_open = s.open_time
-        super().close_all()
+        super().close_all(loss_pause=loss_pause)
         s.baskets.append(dict(t_open=t_open, t_close=s.br.tick().time, pnl=s.br.basket_pnl, reason=s.reason, legs=legs, mae=s.mae, peak=peak))
         s.br.basket_pnl = 0.0; s.max_legs = 0; s.mae = 0.0
 

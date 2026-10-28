@@ -37,9 +37,10 @@ Built originally for Gold (`XAUUSD`), engineered to support any tradeable instru
   * ASCII dashboard displaying live technicals, open bot legs with Recovery vs. Grid tags, floating basket P&L, and active safety guards.
 
 * **Simulation & Self-Test Suite**:
-  * **Deterministic Self-Tests**: **55 offline unit checks** verifying all strategy logic, risk guards, trailing stop mathematics, and execution rules without MT5.
+  * **Deterministic Self-Tests**: **69 offline unit checks** verifying all strategy logic, risk guards, trailing stop mathematics, lot auto-scaling, and MAE/MFE excursion tracking without MT5.
   * **Tick-Level Backtester**: Replays raw historical ticks with realistic slippage and commission models.
   * **Walk-Forward Optimizer**: Rolling out-of-sample forward testing against overfitting.
+  * **Trade Excursion Telemetry (MAE & MFE)**: Continuously records Maximum Favorable Excursion (peak profit) and Maximum Adverse Excursion (deepest drawdown) per basket for quantitative optimization.
 
 ---
 
@@ -89,8 +90,9 @@ python up_down_tracker_win_bot_xauusd.py backtest --symbol XAUUSD --days 30
 
 ## Documentation & Architecture
 For the full architectural breakdown, mathematical formulas, state machine lifecycle diagrams, and complete parameter reference:
-👉 **[SYSTEM_GUIDE.md](file:///c:/Users/dayam/Documents/vantage-algo/SYSTEM_GUIDE.md)**  
-👉 **[AGENT_CONTEXT.md](file:///c:/Users/dayam/Documents/vantage-algo/AGENT_CONTEXT.md)**
+👉 **[SYSTEM_GUIDE.md](file:///c:/Users/dayam/Documents/vantage-algo/SYSTEM_GUIDE.md)** — Architectural blueprint, parameters, and user manual  
+👉 **[AGENT_CONTEXT.md](file:///c:/Users/dayam/Documents/vantage-algo/AGENT_CONTEXT.md)** — Comprehensive case catalog, fixes, and troubleshooting history  
+👉 **[DEV_JOURNAL.md](file:///c:/Users/dayam/Documents/vantage-algo/DEV_JOURNAL.md)** — The Narrative Engineering Journal: our conversations, the $43 rally crisis, the mathematical breakthroughs, and the evolution of the algorithm
 
 ---
 

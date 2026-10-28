@@ -259,6 +259,21 @@ Before sending any deal request to MT5:
 * **Dual Time Display**: The dashboard automatically calculates the broker's UTC offset from live ticks and maps all deal timestamps to local **Indian Standard Time (IST, UTC+5:30)**.
 * **1:1 MT5 Cross-Referencing**: Beneath each IST timestamp in the Open and Closed Positions tables, the system displays the original MT5 Broker Server Time (`MT5 Server: HH:MM:SS`), allowing traders to cross-reference every trade ticket in the desktop MT5 client without mental math.
 
+### 3.12 Proportional Lot-Size Auto-Scaling & Anti-Rally Cooling-Off Pause
+* **Proportional Scaling Multiplier**: Dynamically computes $\text{lot\_mult} = \frac{\text{lots}}{\text{base\_lot}}$. All price-distance dollar thresholds (`grid_step_loss`, `grid_sl`, `trail_arm`, `trail_min_lock`, `grid_tp`, `target_profit`, `bailout_target`, `recycle_tp`, `recycle_sl`, and `stop_loss`) automatically scale proportionally with lot volume. This guarantees that trading $0.10$ lots requires the exact same $\$10.00$ Gold price movement per grid step as $0.01$ lots, preventing premature grid stacking.
+* **Post-Loss Anti-Rally Pause**: Whenever a stop-loss is triggered (`grid-sl`, `trend-inval`, `equity-risk-sl`, `stop-loss`), the bot enforces an extended cooling-off pause (`loss_cooldown_sec = 180s` / 3 minutes default). During this window, all initial entries and flips are halted (`PAUSED AFTER LOSS <rem>s`), preventing consecutive stop-outs during runaway momentum rallies.
+
+### 3.13 Trade Excursion Telemetry (MAE & MFE Analytics)
+* **Empirical Optimization over Guesswork**: Rather than guessing parameter distances, the engine tracks live mark-to-market excursions on every tick:
+  - **MFE (Maximum Favorable Excursion)**: The absolute peak floating profit reached by a position/basket during its open lifetime.
+  - **MAE (Maximum Adverse Excursion)**: The deepest floating drawdown suffered by a position/basket during its open lifetime.
+* **Full-Stack Persistence**:
+  - Tracked tick-by-tick in the core `Bot` class.
+  - Recorded in the CSV decision log (`up_down_tracker_decisions_py.csv`).
+  - Saved persistently in `trade_excursions.json` so historical trade excursions are retained across restarts.
+  - Rendered in real-time in both the Open Positions (`Peak` / `Dip`) and Closed Positions tables with explanatory guidance tooltips.
+* **Chronicle & Evolution**: For the full narrative detailing the discovery of these solutions during live demo testing, see [`DEV_JOURNAL.md`](file:///c:/Users/dayam/Documents/vantage-algo/DEV_JOURNAL.md).
+
 ---
 
 ## 4. Complete Configuration Parameter Reference
@@ -268,6 +283,9 @@ Before sending any deal request to MT5:
 | `symbol` | String | `XAUUSD` | Ticker | Traded financial instrument |
 | `tf` | String | `M1` | Timeframe | Moving average timeframe (`M1`, `M5`, `M15`) |
 | `lots` | Float | `0.01` | Lots | Base position volume per trade leg |
+| `scale_by_lots` | Boolean | `True` | Boolean | Auto-scale dollar thresholds proportionally with lot size |
+| `base_lot` | Float | `0.01` | Lots | Reference lot size for baseline dollar parameters |
+| `loss_cooldown_sec` | Integer | `180` | Seconds | Mandatory cooling-off pause after a stop loss before re-entering |
 | `side` | String | `both` | Enum | Direction bias: `both`, `buy`, `sell` |
 | `entry_mode` | String | `pullback` | Enum | Entry logic: `pullback` (rejection bounce) or `classic` (direct MA) |
 | `pullback_zone` | Float | `3.00` | USD (\$) | Max distance from MA defining the dip/rally pullback zone |

@@ -533,18 +533,21 @@
         </div>
       </div>
 
-      <!-- CARD 5: DAILY GOAL PROGRESS (Compact 1-Column) -->
+      <!-- CARD 5: ACTIVE SESSION & DAILY GOAL (Compact 1-Column) -->
       <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3.5 shadow-sm col-span-1 transition-colors flex flex-col justify-between">
         <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-0.5">
           <span class="has-tooltip inline-flex items-center">
-            <span class="font-medium">Daily Goal</span>
+            <span class="font-medium">Session Goal</span>
             <span class="tip-icon">i</span>
             <span class="tooltip-box tip-right">
-              <strong class="block text-amber-400 font-semibold mb-0.5">Daily Profit Target</strong>
-              Cumulative realized profit target for the day. Once banked, the engine automatically suspends trading to lock in daily wins.
+              <strong class="block text-amber-400 font-semibold mb-0.5">Active Session Target</strong>
+              Realized profit target for the current active bot run. Click ↺ anytime to reset target tracking for a new test run.
             </span>
           </span>
-          <span id="txt-deals-count" class="text-[10px] text-slate-400 dark:text-slate-500">0 Deals</span>
+          <div class="flex items-center space-x-1">
+            <span id="txt-deals-count" class="text-[10px] text-slate-400 dark:text-slate-500 font-mono">0 Deals</span>
+            <button type="button" onclick="resetSessionGoal()" class="text-[11px] text-amber-600 dark:text-amber-400 hover:text-amber-500 font-bold px-1 py-0.2 rounded hover:bg-amber-500/10 transition-colors" title="Reset Session Target &amp; Deals Tracker">↺</button>
+          </div>
         </div>
         <div class="flex items-baseline justify-between mt-0.5">
           <span class="text-xl font-black font-mono text-slate-900 dark:text-white" id="txt-daily-profit">$0.00</span>
@@ -560,10 +563,10 @@
             <span class="tip-icon">i</span>
             <span class="tooltip-box tip-right">
               <strong class="block text-amber-400 font-semibold mb-0.5">Goal Completion %</strong>
-              Percentage progress toward today's configured daily profit goal.
+              Percentage progress toward the active session target.
             </span>
           </span>
-          <span id="txt-goal-status" class="text-slate-400 dark:text-slate-500 truncate max-w-[70px]">In progress</span>
+          <span id="txt-today-broker" class="text-[9px] text-slate-400 dark:text-slate-500 font-mono truncate max-w-[90px]" title="Total realized P&amp;L and deals executed on MT5 broker today">Day: $0.00 (0)</span>
         </div>
       </div>
     </div>
@@ -681,49 +684,8 @@
       </div>
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
         
-        <!-- P&L / EQUITY CURVE CHART (2 Cols) -->
+        <!-- POSITIONS & TRADES CARD (2 Cols - Wide, Spacious Ledger) -->
         <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm lg:col-span-2 flex flex-col transition-colors">
-          <div class="flex items-center justify-between mb-3">
-            <div class="flex items-center space-x-2">
-              <span class="has-tooltip inline-flex items-center">
-                <span class="text-base font-bold text-slate-900 dark:text-white">Session P&L Trajectory</span>
-                <span class="tip-icon">i</span>
-                <span class="tooltip-box tip-left">
-                  <strong class="block text-amber-400 font-semibold mb-0.5">Session Performance Curve</strong>
-                  Real-time equity and floating basket profit/loss tracked at 1-minute intervals over the last 2 hours.
-                </span>
-              </span>
-              <span id="badge-chart-status" class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700">PAUSED (BOT IDLE)</span>
-            </div>
-            <div class="text-xs font-mono text-slate-500 dark:text-slate-400 flex items-center">
-              <span class="has-tooltip inline-flex items-center">
-                <span>Equity:</span>
-                <span class="tip-icon">i</span>
-                <span class="tooltip-box">
-                  <strong class="block text-amber-400 font-semibold mb-0.5">Account Equity</strong>
-                  Account balance plus current net unrealized floating profit/loss across all positions.
-                </span>
-              </span>
-              <span id="txt-equity" class="text-emerald-600 dark:text-emerald-400 font-bold ml-1">$0.00</span>
-              <span class="text-slate-300 dark:text-slate-700 mx-1.5">&bull;</span>
-              <span class="has-tooltip inline-flex items-center">
-                <span>Free Margin:</span>
-                <span class="tip-icon">i</span>
-                <span class="tooltip-box tip-right">
-                  <strong class="block text-amber-400 font-semibold mb-0.5">Available Free Margin</strong>
-                  Capital currently available to open new positions or withstand adverse market price fluctuations.
-                </span>
-              </span>
-              <span id="txt-free-margin" class="text-amber-600 dark:text-amber-400 font-bold ml-1">$0.00</span>
-            </div>
-          </div>
-          <div class="relative flex-1 min-h-[220px] sm:min-h-[240px] w-full">
-            <canvas id="pnlChart"></canvas>
-          </div>
-        </div>
-
-        <!-- POSITIONS & TRADES CARD (1 Col, Tabs: Open & Closed) -->
-        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm flex flex-col transition-colors">
           
           <!-- Header with Tabs and Legend -->
           <div class="flex items-center justify-between mb-3 border-b border-slate-100 dark:border-slate-800 pb-3">
@@ -751,17 +713,17 @@
           </div>
 
           <!-- TAB 1: OPEN POSITIONS TABLE -->
-          <div id="tab-content-open" class="flex-1 overflow-y-auto max-h-[250px]">
+          <div id="tab-content-open" class="flex-1 overflow-y-auto max-h-[285px]">
             <table class="w-full text-left text-xs">
               <thead class="text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 sticky top-0 border-b border-slate-200 dark:border-slate-800">
                 <tr>
                   <th class="p-2 font-medium">
                     <span class="has-tooltip inline-flex items-center">
-                      <span>Type</span>
+                      <span>Type &amp; Ticket</span>
                       <span class="tip-icon">i</span>
                       <span class="tooltip-box tip-left">
-                        <strong class="block text-amber-400 font-semibold mb-0.5">Order Direction &amp; Origin</strong>
-                        BUY or SELL trade along with origin tag (<strong>B</strong> for Bot automated, <strong>U</strong> for manual User order).
+                        <strong class="block text-amber-400 font-semibold mb-0.5">Order Direction, Origin &amp; Ticket</strong>
+                        BUY or SELL trade along with its unique MT5 ticket number and origin tag (<strong>B</strong> for Bot automated, <strong>U</strong> for manual User order).
                       </span>
                     </span>
                   </th>
@@ -787,11 +749,11 @@
                   </th>
                   <th class="p-2 font-medium text-right">
                     <span class="has-tooltip inline-flex items-center justify-end">
-                      <span>P&amp;L ($)</span>
+                      <span>P&amp;L &amp; Excursion</span>
                       <span class="tip-icon">i</span>
                       <span class="tooltip-box tip-right">
-                        <strong class="block text-amber-400 font-semibold mb-0.5">Floating Profit / Loss</strong>
-                        Real-time mark-to-market unrealized profit or loss calculated against live tick price.
+                        <strong class="block text-amber-400 font-semibold mb-0.5">Floating P&amp;L &amp; Excursion</strong>
+                        Live floating P&amp;L alongside Peak (MFE: highest profit reached) and Dip (MAE: deepest drawdown reached) during this position's lifetime.
                       </span>
                     </span>
                   </th>
@@ -806,17 +768,33 @@
           </div>
 
           <!-- TAB 2: CLOSED TRADES TABLE -->
-          <div id="tab-content-closed" class="hidden flex-1 overflow-y-auto max-h-[250px]">
+          <div id="tab-content-closed" class="hidden flex-1 flex flex-col">
+            <!-- Period Filter Bar -->
+            <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-100 dark:border-slate-800/80 text-xs">
+              <div class="flex items-center space-x-1 font-mono">
+                <span class="text-slate-400 text-[11px] mr-1 font-sans">History:</span>
+                <button type="button" onclick="setHistoryPeriod('today')" id="hbtn-today" class="px-2 py-0.5 rounded text-[11px] font-medium border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-all">Today</button>
+                <button type="button" onclick="setHistoryPeriod('3d')" id="hbtn-3d" class="px-2 py-0.5 rounded text-[11px] font-medium border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-all">3D</button>
+                <button type="button" onclick="setHistoryPeriod('7d')" id="hbtn-7d" class="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 transition-all">7D</button>
+                <button type="button" onclick="setHistoryPeriod('30d')" id="hbtn-30d" class="px-2 py-0.5 rounded text-[11px] font-medium border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-all">30D</button>
+                <button type="button" onclick="setHistoryPeriod('all')" id="hbtn-all" class="px-2 py-0.5 rounded text-[11px] font-medium border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-all">All</button>
+              </div>
+              <span class="text-[10px] text-slate-400 font-mono flex items-center space-x-1">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
+                <span>MT5 Ground Truth</span>
+              </span>
+            </div>
+            <div class="overflow-y-auto max-h-[250px]">
             <table class="w-full text-left text-xs">
               <thead class="text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 sticky top-0 border-b border-slate-200 dark:border-slate-800">
                 <tr>
                   <th class="p-2 font-medium">
                     <span class="has-tooltip inline-flex items-center">
-                      <span>Type</span>
+                      <span>Type &amp; Ticket</span>
                       <span class="tip-icon">i</span>
                       <span class="tooltip-box tip-left">
-                        <strong class="block text-amber-400 font-semibold mb-0.5">Closed Order Direction</strong>
-                        BUY or SELL position that has been fully closed.
+                        <strong class="block text-amber-400 font-semibold mb-0.5">Closed Order Direction &amp; Ticket</strong>
+                        BUY or SELL position that has been fully closed, with its unique MT5 Position ID ticket number and origin tag.
                       </span>
                     </span>
                   </th>
@@ -842,11 +820,11 @@
                   </th>
                   <th class="p-2 font-medium text-right">
                     <span class="has-tooltip inline-flex items-center justify-end">
-                      <span>Profit ($)</span>
+                      <span>Profit &amp; Excursion</span>
                       <span class="tip-icon">i</span>
                       <span class="tooltip-box tip-right">
-                        <strong class="block text-amber-400 font-semibold mb-0.5">Realized Net Profit</strong>
-                        Final net closed profit or loss deposited into your account balance after commission and swaps.
+                        <strong class="block text-amber-400 font-semibold mb-0.5">Realized Net Profit &amp; Excursion</strong>
+                        Final realized profit/loss alongside MFE (Peak: maximum favorable excursion) and MAE (Dip: maximum adverse excursion). Essential for calibrating optimal stop-loss and trailing take-profit distances.
                       </span>
                     </span>
                   </th>
@@ -858,8 +836,33 @@
                 </tr>
               </tbody>
             </table>
+            </div>
           </div>
 
+        </div>
+
+        <!-- P&L / EQUITY CURVE CHART (1 Col, Compact Companion) -->
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm lg:col-span-1 flex flex-col justify-between transition-colors">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center space-x-2">
+              <span class="has-tooltip inline-flex items-center">
+                <span class="text-sm font-bold text-slate-900 dark:text-white">Session Trajectory</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-left">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Session Performance Curve</strong>
+                  Real-time equity and floating basket profit/loss tracked at 1-minute intervals over the last 2 hours.
+                </span>
+              </span>
+              <span id="badge-chart-status" class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700">PAUSED</span>
+            </div>
+          </div>
+          <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 flex items-center justify-between pb-2 mb-2 border-b border-slate-100 dark:border-slate-800">
+            <span>Equity: <strong id="txt-equity" class="text-emerald-600 dark:text-emerald-400">$0.00</strong></span>
+            <span>Free: <strong id="txt-free-margin" class="text-amber-600 dark:text-amber-400">$0.00</strong></span>
+          </div>
+          <div class="relative flex-1 h-[160px] sm:h-[175px] w-full">
+            <canvas id="pnlChart"></canvas>
+          </div>
         </div>
 
       </div>
@@ -1006,6 +1009,21 @@
               <div id="cfg-lots-calc-box" class="mt-1.5 space-y-1"></div>
             </div>
 
+            <div class="col-span-1 sm:col-span-2 pt-1">
+              <label class="flex items-center space-x-2 cursor-pointer select-none">
+                <input type="checkbox" id="cfg-scale_by_lots" onchange="calculateLiveMargin()" class="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700">
+                <span class="text-slate-700 dark:text-slate-300 font-bold flex items-center space-x-1.5 has-tooltip">
+                  <span>📐</span>
+                  <span>Proportional Lot Auto-Scaling (Recommended)</span>
+                  <span class="tip-icon" onclick="event.stopPropagation()">i</span>
+                  <span class="tooltip-box tip-left">
+                    <strong class="block text-amber-400 font-semibold mb-0.5">Lot Proportionality</strong>
+                    Automatically scales all dollar thresholds (Grid Step Loss, Grid SL, Trailing Arm, TP Target, Bailout Target) proportionally with lot size (e.g. at 0.10 lot = 10x, $10 step loss becomes $100 to maintain the exact same $10.00 Gold price distance as on 0.01 lot). Prevents rapid premature grid stacking and sudden stop-outs on larger lot sizes.
+                  </span>
+                </span>
+              </label>
+            </div>
+
             <div>
               <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
                 <span>Daily Profit Goal ($)</span>
@@ -1119,6 +1137,17 @@
                 </span>
               </label>
               <input type="number" step="1" id="cfg-min_entry_gap_sec" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="default 15">
+            </div>
+            <div>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+                <span>Post-Loss Pause / Anti-Rally (Sec)</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-left">
+                  <strong class="block text-rose-400 font-semibold mb-0.5">Anti-Rally Cooling-Off</strong>
+                  Extended pause in seconds (default 180s = 3m) enforced immediately after a stop loss (Grid SL, Trend Invalidation, or Equity Risk Cut). Prevents re-entering repeatedly into a runaway adverse rally/trend.
+                </span>
+              </label>
+              <input type="number" step="10" id="cfg-loss_cooldown_sec" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="default 180">
             </div>
 
             <div>
@@ -1773,6 +1802,9 @@
           } else if (s.bot.nopen > 0) {
             if (rDot) rDot.className = 'w-3 h-3 rounded-full bg-blue-500 flex-shrink-0 pulse-dot';
             if (rHead) rHead.innerText = `Active Position Open (${s.bot.nopen} legs) — ${s.bot.status}`;
+          } else if (s.bot.status && s.bot.status.includes('PAUSED AFTER LOSS')) {
+            if (rDot) rDot.className = 'w-3 h-3 rounded-full bg-rose-500 flex-shrink-0 pulse-dot';
+            if (rHead) rHead.innerText = `🛡️ ${s.bot.status} — Anti-rally safety cooling-off`;
           } else if (s.bot.status && s.bot.status.includes('COOLDOWN')) {
             if (rDot) rDot.className = 'w-3 h-3 rounded-full bg-amber-500 flex-shrink-0 pulse-dot';
             if (rHead) rHead.innerText = `${s.bot.status} — Waiting before next entry`;
@@ -1805,6 +1837,13 @@
         if (statusEl) {
           statusEl.innerText = statusText;
           statusEl.title = statusText;
+          if (statusText.includes('PAUSED AFTER LOSS')) {
+            statusEl.className = 'font-bold text-rose-500 animate-pulse text-right truncate';
+          } else if (statusText.includes('COOLDOWN')) {
+            statusEl.className = 'font-semibold text-amber-500 text-right truncate';
+          } else {
+            statusEl.className = 'font-semibold text-amber-600 dark:text-amber-400 text-right truncate';
+          }
         }
         const currentMa = (telem && telem.current_ma > 0) ? telem.current_ma : (b.ma > 0 ? b.ma : 0);
         document.getElementById('txt-ma').innerText = currentMa > 0 ? currentMa.toFixed(2) : '---';
@@ -1841,6 +1880,15 @@
         document.getElementById('txt-peak').innerText = `Peak: $${b.peak.toFixed(2)}`;
         document.getElementById('txt-trail-stop').innerText = `Lock: $${b.trail_stop.toFixed(2)}`;
 
+        const armEl = document.getElementById('txt-trail-arm');
+        if (armEl) {
+          const effArm = b.eff_trail_arm || (s.config ? s.config.trail_arm : 1.0);
+          armEl.innerText = `$${effArm.toFixed(2)}`;
+          if (b.lot_mult && b.lot_mult > 1) {
+            armEl.title = `Arm Threshold: $${effArm.toFixed(2)} (${b.lot_mult}x scaled from $${(s.config ? s.config.trail_arm : 1.0).toFixed(2)})`;
+          }
+        }
+
         // Grid Legs Dots
         const maxLegs = s.config ? s.config.grid_max_legs : 5;
         document.getElementById('txt-legs-count').innerText = `${b.nopen} / ${maxLegs} Legs`;
@@ -1862,12 +1910,23 @@
         const pct = Math.min(Math.max((b.daily / goal) * 100, 0), 100);
         document.getElementById('bar-daily-progress').style.width = `${pct}%`;
         document.getElementById('txt-daily-pct').innerText = `${pct.toFixed(0)}%`;
-        if (b.daily >= goal) {
-          document.getElementById('txt-goal-status').innerText = '🎉 Daily Goal Achieved!';
-          document.getElementById('txt-goal-status').className = 'text-emerald-600 dark:text-emerald-400 font-semibold';
-        } else {
-          document.getElementById('txt-goal-status').innerText = 'Trading in progress';
-          document.getElementById('txt-goal-status').className = 'text-slate-400 dark:text-slate-500';
+
+        const goalStatusEl = document.getElementById('txt-goal-status');
+        if (goalStatusEl) {
+          if (b.daily >= goal) {
+            goalStatusEl.innerText = '🎉 Goal Achieved!';
+            goalStatusEl.className = 'text-emerald-600 dark:text-emerald-400 font-semibold';
+          } else {
+            goalStatusEl.innerText = 'Trading in progress';
+            goalStatusEl.className = 'text-slate-400 dark:text-slate-500';
+          }
+        }
+
+        const todayBrokerEl = document.getElementById('txt-today-broker');
+        if (todayBrokerEl) {
+          const dayPnl = (b.broker_daily !== undefined) ? b.broker_daily : b.daily;
+          const dayDeals = (b.broker_deals !== undefined) ? b.broker_deals : b.deals;
+          todayBrokerEl.innerText = `Day: ${dayPnl >= 0 ? '+' : ''}$${Number(dayPnl).toFixed(2)} (${dayDeals})`;
         }
 
         // Push live point to chart ONLY when bot is running
@@ -1913,21 +1972,41 @@
 
           html += `
             <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-              <td class="p-2 flex items-center space-x-1.5">
-                <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${isBuy ? 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400'}">${p.type}</span>
-                ${originBadge}
-                ${p.symbol ? `<span class="px-1 py-0.5 rounded text-[9px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono">${p.symbol}</span>` : ''}
+              <td class="p-2">
+                <div class="flex items-center space-x-1.5">
+                  <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${isBuy ? 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400'}">${p.type}</span>
+                  ${originBadge}
+                  <span class="px-1 py-0.5 rounded text-[9px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono">${p.symbol || 'XAUUSD'}</span>
+                </div>
+                <div class="text-[10px] text-slate-400 font-mono mt-0.5">#${p.ticket}</div>
               </td>
-              <td class="p-2 text-slate-700 dark:text-slate-300 font-mono">${p.volume}</td>
+              <td class="p-2 text-slate-700 dark:text-slate-300 font-mono font-semibold">${p.volume}</td>
               <td class="p-2 text-slate-700 dark:text-slate-300">
-                <div class="font-bold font-mono">${p.price_open.toFixed(2)}</div>
+                <div class="font-bold font-mono flex items-center space-x-1.5">
+                  <span>${p.price_open.toFixed(2)}</span>
+                  <span class="text-slate-400">&rarr;</span>
+                  <span class="text-amber-600 dark:text-amber-400 font-semibold">${(p.price_current || p.price_open).toFixed(2)}</span>
+                  <span class="text-amber-600 dark:text-amber-400 font-sans font-medium text-[10px]">${durationStr}</span>
+                </div>
                 <div class="text-[10px] text-slate-400 font-mono flex items-center space-x-1.5 mt-0.5">
                   <span>In: <span class="font-semibold text-slate-700 dark:text-slate-200">${openTimeStr}</span></span>
-                  <span class="text-amber-600 dark:text-amber-400 font-sans font-medium">${durationStr}</span>
+                  ${openServerStr ? `<span class="text-slate-400 dark:text-slate-500 font-mono">(${openServerStr.replace(' (Server)', '')})</span>` : ''}
                 </div>
-                ${openServerStr ? `<div class="text-[9px] text-slate-400 dark:text-slate-500 font-mono">MT5: ${openServerStr}</div>` : ''}
+                ${(p.sl > 0 || p.tp > 0) ? `
+                <div class="text-[9px] font-mono mt-0.5 space-x-2 text-slate-400">
+                  ${p.sl > 0 ? `<span class="text-rose-500 font-medium">SL: ${p.sl.toFixed(2)}</span>` : ''}
+                  ${p.tp > 0 ? `<span class="text-emerald-500 font-medium">TP: ${p.tp.toFixed(2)}</span>` : ''}
+                </div>` : ''}
               </td>
-              <td class="p-2 text-right font-bold font-mono ${pnlColor}">${p.profit >= 0 ? '+' : ''}${p.profit.toFixed(2)}</td>
+              <td class="p-2 text-right">
+                <div class="font-bold font-mono ${pnlColor}">${p.profit >= 0 ? '+' : ''}${p.profit.toFixed(2)}</div>
+                ${(p.mfe !== undefined && p.mfe !== null) ? `
+                <div class="text-[9px] font-mono flex items-center justify-end space-x-1 mt-0.5 text-slate-400">
+                  <span title="MFE: Maximum Favorable Excursion (Peak profit reached)">Peak: <strong class="text-emerald-500 font-semibold">+$${p.mfe.toFixed(2)}</strong></span>
+                  <span>&bull;</span>
+                  <span title="MAE: Maximum Adverse Excursion (Deepest drawdown reached)">Dip: <strong class="text-rose-500 font-semibold">-$${Math.abs(p.mae || 0).toFixed(2)}</strong></span>
+                </div>` : ''}
+              </td>
             </tr>
           `;
         });
@@ -1959,12 +2038,15 @@
 
           htmlClosed += `
             <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-              <td class="p-2 flex items-center space-x-1.5">
-                <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${isBuy ? 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400'}">${p.type}</span>
-                ${originBadge}
-                ${p.symbol ? `<span class="px-1 py-0.5 rounded text-[9px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono">${p.symbol}</span>` : ''}
+              <td class="p-2">
+                <div class="flex items-center space-x-1.5">
+                  <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${isBuy ? 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400' : 'bg-rose-500/10 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400'}">${p.type}</span>
+                  ${originBadge}
+                  <span class="px-1 py-0.5 rounded text-[9px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono">${p.symbol || 'XAUUSD'}</span>
+                </div>
+                <div class="text-[10px] text-slate-400 font-mono mt-0.5">#${p.ticket}</div>
               </td>
-              <td class="p-2 text-slate-700 dark:text-slate-300 font-mono">${p.volume}</td>
+              <td class="p-2 text-slate-700 dark:text-slate-300 font-mono font-semibold">${p.volume}</td>
               <td class="p-2 text-slate-700 dark:text-slate-300">
                 <div class="font-bold font-mono flex items-center space-x-1.5">
                   <span>${p.price_open ? p.price_open.toFixed(2) : '---'}</span>
@@ -1981,14 +2063,29 @@
                   MT5 Server: ${inServer.replace(' (Server)', '')} &rarr; ${outServer.replace(' (Server)', '')}
                 </div>` : ''}
               </td>
-              <td class="p-2 text-right font-bold font-mono ${pnlColor}">${p.profit >= 0 ? '+' : ''}${p.profit.toFixed(2)}</td>
+              <td class="p-2 text-right">
+                <div class="font-bold font-mono ${pnlColor}" title="Gross: $${(p.gross_profit || 0).toFixed(2)}, Swap: $${(p.swap || 0).toFixed(2)}, Comm: $${(p.commission || 0).toFixed(2)}">${p.profit >= 0 ? '+' : ''}${p.profit.toFixed(2)}</div>
+                ${(p.mfe !== undefined && p.mfe !== null) ? `
+                <div class="text-[9px] font-mono flex items-center justify-end space-x-1 mt-0.5 text-slate-400">
+                  <span title="MFE: Maximum Favorable Excursion (Peak profit reached)">Peak: <strong class="text-emerald-500 font-semibold">+$${Number(p.mfe).toFixed(2)}</strong></span>
+                  <span>&bull;</span>
+                  <span title="MAE: Maximum Adverse Excursion (Deepest drawdown reached)">Dip: <strong class="text-rose-500 font-semibold">-$${Math.abs(Number(p.mae) || 0).toFixed(2)}</strong></span>
+                </div>` : `
+                <div class="text-[9px] text-slate-400 font-mono mt-0.5" title="Gross: $${(p.gross_profit || 0).toFixed(2)}, Swap: $${(p.swap || 0).toFixed(2)}, Comm: $${(p.commission || 0).toFixed(2)}">
+                  Net Realized
+                </div>`}
+              </td>
             </tr>
           `;
         });
         tblClosed.innerHTML = htmlClosed;
       } else {
         countClosedEl.innerText = '0';
-        tblClosed.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-slate-400 dark:text-slate-500 font-sans">No closed trades today</td></tr>';
+        tblClosed.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-slate-400 dark:text-slate-500 font-sans">No closed trades in selected period</td></tr>';
+      }
+
+      if (s.history_period) {
+        updateHistoryPeriodButtons(s.history_period);
       }
 
       // Live Terminal Feed
@@ -2332,6 +2429,51 @@
     }
 
     // Tab Switcher: Open vs Closed Positions
+    function resetSessionGoal() {
+      fetch('/api/reset_goal', { method: 'POST' })
+        .then(r => r.json())
+        .then(d => {
+          const pEl = document.getElementById('txt-daily-profit');
+          if (pEl) pEl.innerText = '$0.00';
+          const dEl = document.getElementById('txt-deals-count');
+          if (dEl) dEl.innerText = '0 Deals';
+          const bEl = document.getElementById('bar-daily-progress');
+          if (bEl) bEl.style.width = '0%';
+          const pctEl = document.getElementById('txt-daily-pct');
+          if (pctEl) pctEl.innerText = '0%';
+        })
+        .catch(e => console.error('Failed to reset session goal:', e));
+    }
+
+    function setHistoryPeriod(period) {
+      updateHistoryPeriodButtons(period);
+      fetch('/api/history_period', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ period: period })
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.period) {
+          updateHistoryPeriodButtons(data.period);
+        }
+      })
+      .catch(e => console.error('Failed to set history period:', e));
+    }
+
+    function updateHistoryPeriodButtons(activePeriod) {
+      const periods = ['today', '3d', '7d', '30d', 'all'];
+      periods.forEach(p => {
+        const el = document.getElementById(`hbtn-${p}`);
+        if (!el) return;
+        if (p === activePeriod) {
+          el.className = 'px-2 py-0.5 rounded text-[11px] font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 shadow-xs';
+        } else {
+          el.className = 'px-2 py-0.5 rounded text-[11px] font-medium border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-all';
+        }
+      });
+    }
+
     function switchPositionsTab(tab) {
       const btnOpen = document.getElementById('tab-btn-open');
       const btnClosed = document.getElementById('tab-btn-closed');
@@ -2432,6 +2574,34 @@
           </div>
         `;
       }
+
+      // Proportional Auto-Scaling Telemetry Preview
+      const scaleEnabled = document.getElementById('cfg-scale_by_lots')?.checked ?? true;
+      const lotMult = lots / 0.01;
+      if (scaleEnabled && lotMult > 1.0) {
+        const stepLossRaw = parseFloat(document.getElementById('cfg-grid_step_loss')?.value) || 10.0;
+        const gridSlRaw = parseFloat(document.getElementById('cfg-grid_sl')?.value) || 200.0;
+        const trailArmRaw = parseFloat(document.getElementById('cfg-trail_arm')?.value) || 1.0;
+        const effStep = (stepLossRaw * lotMult).toFixed(2);
+        const effSl = (gridSlRaw * lotMult).toFixed(2);
+        const effArm = (trailArmRaw * lotMult).toFixed(2);
+        calcBox.innerHTML += `
+          <div class="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 text-[11px]">
+            <div class="font-bold flex items-center justify-between text-xs">
+              <span>⚡ Proportional Scaling Active (${lotMult.toFixed(1)}&times;)</span>
+              <span class="text-[10px] font-normal text-amber-600 dark:text-amber-300">Base: 0.01 lot</span>
+            </div>
+            <div class="grid grid-cols-3 gap-1 mt-1 font-mono text-[10px] text-slate-700 dark:text-slate-300">
+              <div>Step: <strong>$${effStep}</strong></div>
+              <div>Grid SL: <strong>$${effSl}</strong></div>
+              <div>Trail Arm: <strong>$${effArm}</strong></div>
+            </div>
+            <div class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+              Maintains constant price distances ($${stepLossRaw.toFixed(2)} step / $${trailArmRaw.toFixed(2)} trail) to prevent premature grid stacking.
+            </div>
+          </div>
+        `;
+      }
     }
 
     // Modal Helpers: Config
@@ -2467,6 +2637,8 @@
         symbol: symVal || 'XAUUSD',
         side: document.getElementById('cfg-side').value || 'both',
         lots: parseFloat(document.getElementById('cfg-lots').value),
+        scale_by_lots: document.getElementById('cfg-scale_by_lots') ? document.getElementById('cfg-scale_by_lots').checked : true,
+        loss_cooldown_sec: parseInt(document.getElementById('cfg-loss_cooldown_sec')?.value) || 180,
         daily_goal: parseFloat(document.getElementById('cfg-daily_goal').value),
         ma_period: parseInt(document.getElementById('cfg-ma_period').value),
         grid_max_legs: parseInt(document.getElementById('cfg-grid_max_legs').value),

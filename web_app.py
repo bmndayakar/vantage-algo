@@ -53,7 +53,11 @@ def format_mt5_time(epoch_seconds: int, server_offset_hours: float = 2.0) -> Dic
     # Subtract broker server UTC offset to get true UTC
     dt_utc = dt_server - dt.timedelta(hours=server_offset_hours)
     # Convert true UTC to machine local timezone (IST, UTC+5:30)
-    dt_local = dt_utc.replace(tzinfo=dt.timezone.utc).astimezone()
+    try:
+        dt_local = dt_utc.replace(tzinfo=dt.timezone.utc).astimezone()
+    except Exception:
+        # Fallback for platforms/Windows CRT on near-epoch timestamps
+        dt_local = dt_utc + dt.timedelta(hours=5, minutes=30)
 
     tz_name = dt_local.strftime("%Z")
     if not tz_name or tz_name.startswith("+") or tz_name.startswith("-"):
@@ -282,6 +286,25 @@ def compute_entry_telemetry(
 
 CONFIG_FILE = os.path.join(HERE, "bot_config.json")
 SAVED_ACCOUNTS_FILE = os.path.join(HERE, "saved_accounts.json")
+TRADE_EXCURSIONS_FILE = os.path.join(HERE, "trade_excursions.json")
+
+
+def load_trade_excursions() -> Dict[str, Any]:
+    if not os.path.exists(TRADE_EXCURSIONS_FILE):
+        return {}
+    try:
+        with open(TRADE_EXCURSIONS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def save_trade_excursions(excursions: Dict[str, Any]):
+    try:
+        with open(TRADE_EXCURSIONS_FILE, "w", encoding="utf-8") as f:
+            json.dump(excursions, f, indent=2)
+    except Exception as e:
+        logger.error(f"Failed to save trade excursions: {e}")
 
 
 def load_saved_accounts() -> Dict[str, Any]:
@@ -300,6 +323,154 @@ def save_saved_accounts(accounts: Dict[str, Any]):
             json.dump(accounts, f, indent=2)
     except Exception as e:
         logger.error(f"Failed to save accounts: {e}")
+
+
+def reconstruct_closed_positions(
+    deals,
+    fetch_pos_deals_fn=None,
+    magics=(123790, 789998),
+    server_offset=0,
+    trade_excursions=None,
+) -> List[Dict[str, Any]]:
+    """
+    Reconstructs closed positions from MT5 trade deals matching MT5 Desktop's 'Positions' tab:
+    - Ticket: Position ID
+    - Type: BUY or SELL based on opening entry direction
+    - Lots: Total closed volume
+    - Open Price: Volume-weighted average entry fill price
+    - Close Price: Volume-weighted average exit fill price
+    - Profit: Net realized PnL (sum(deal.profit) + sum(deal.swap) + sum(deal.commission))
+    - Excursion: MFE & MAE looked up by position ticket
+    - Symbol: Deal symbol
+    - Timestamps: In IST and Server time
+    """
+    if not deals:
+        return []
+
+    # Deal entry flags in MT5:
+    # 0 = DEAL_ENTRY_IN, 1 = DEAL_ENTRY_OUT, 2 = DEAL_ENTRY_INOUT, 3 = DEAL_ENTRY_OUT_BY
+    # Deal types: 0 = BUY, 1 = SELL (2+ are balance/credit)
+    closed_pos_ids = {
+        getattr(d, "position_id", 0)
+        for d in deals
+        if getattr(d, "entry", -1) in (1, 2, 3)
+        and getattr(d, "position_id", 0) > 0
+        and getattr(d, "type", -1) in (0, 1)
+    }
+
+    if not closed_pos_ids:
+        return []
+
+    deals_by_pos: Dict[int, List[Any]] = collections.defaultdict(list)
+    for d in deals:
+        pid = getattr(d, "position_id", 0)
+        if pid in closed_pos_ids and getattr(d, "type", -1) in (0, 1):
+            deals_by_pos[pid].append(d)
+
+    closed_data = []
+    magic_set = set(magics)
+
+    for pos_id in sorted(closed_pos_ids, reverse=True):
+        pdeals = deals_by_pos.get(pos_id, [])
+
+        # If entry deals occurred outside the queried deals window, fetch full deals for this position
+        if fetch_pos_deals_fn and not any(getattr(d, "entry", -1) in (0, 2) for d in pdeals):
+            try:
+                extra = fetch_pos_deals_fn(pos_id)
+                if extra:
+                    pdeals = [
+                        d for d in extra
+                        if getattr(d, "position_id", 0) == pos_id and getattr(d, "type", -1) in (0, 1)
+                    ]
+            except Exception:
+                pass
+
+        entries = [d for d in pdeals if getattr(d, "entry", -1) in (0, 2)]
+        exits = [d for d in pdeals if getattr(d, "entry", -1) in (1, 3)]
+
+        if not exits:
+            continue
+
+        tot_closed_vol = sum(float(getattr(d, "volume", 0.0)) for d in exits)
+        if tot_closed_vol <= 0:
+            tot_closed_vol = sum(float(getattr(d, "volume", 0.0)) for d in entries) or 0.01
+
+        weighted_close_p = (
+            sum(float(getattr(d, "price", 0.0)) * float(getattr(d, "volume", 0.0)) for d in exits)
+            / sum(float(getattr(d, "volume", 0.0)) for d in exits)
+            if any(float(getattr(d, "volume", 0.0)) > 0 for d in exits)
+            else float(getattr(exits[-1], "price", 0.0))
+        )
+
+        if entries and any(float(getattr(d, "volume", 0.0)) > 0 for d in entries):
+            weighted_open_p = (
+                sum(float(getattr(d, "price", 0.0)) * float(getattr(d, "volume", 0.0)) for d in entries)
+                / sum(float(getattr(d, "volume", 0.0)) for d in entries)
+            )
+            pos_type = "BUY" if getattr(entries[0], "type", 0) == 0 else "SELL"
+            open_time = min(int(getattr(d, "time", 0)) for d in entries)
+        elif exits:
+            weighted_open_p = 0.0
+            # If exit deal was SELL (1), position was BUY. If exit was BUY (0), position was SELL.
+            pos_type = "BUY" if getattr(exits[0], "type", 0) == 1 else "SELL"
+            open_time = min(int(getattr(d, "time", 0)) for d in exits)
+        else:
+            continue
+
+        close_time = max(int(getattr(d, "time", 0)) for d in exits)
+        duration_sec = max(0, close_time - open_time) if (open_time > 0 and close_time >= open_time) else 0
+
+        gross_profit = sum(float(getattr(d, "profit", 0.0)) for d in pdeals)
+        swap = sum(float(getattr(d, "swap", 0.0)) for d in pdeals)
+        comm = sum(float(getattr(d, "commission", 0.0)) for d in pdeals)
+        net_profit = round(gross_profit + swap + comm, 2)
+
+        magic = max((int(getattr(d, "magic", 0)) for d in pdeals), default=0)
+        is_bot = bool(magic in magic_set or magic > 0)
+        origin = "REC" if magic == 789998 else ("B" if is_bot else "U")
+
+        sym = (
+            getattr(exits[0], "symbol", "")
+            if exits and getattr(exits[0], "symbol", "")
+            else (getattr(entries[0], "symbol", "") if entries else "")
+        )
+
+        t_in = format_mt5_time(open_time, server_offset)
+        t_out = format_mt5_time(close_time, server_offset)
+
+        ticket_str = str(pos_id)
+        exc = (trade_excursions or {}).get(ticket_str)
+        mfe_val = round(float(exc["mfe"]), 2) if (exc and "mfe" in exc) else None
+        mae_val = round(float(exc["mae"]), 2) if (exc and "mae" in exc) else None
+
+        closed_data.append({
+            "ticket": pos_id,
+            "symbol": sym,
+            "type": pos_type,
+            "volume": round(tot_closed_vol, 2),
+            "price_open": round(weighted_open_p, 2),
+            "price_close": round(weighted_close_p, 2),
+            "gross_profit": round(gross_profit, 2),
+            "swap": round(swap, 2),
+            "commission": round(comm, 2),
+            "profit": net_profit,
+            "mfe": mfe_val,
+            "mae": mae_val,
+            "time_open": t_in["local"],
+            "time_open_server": t_in["server"],
+            "time_close": t_out["local"],
+            "time_close_server": t_out["server"],
+            "time": t_out["local"],
+            "duration": format_duration(duration_sec),
+            "magic": magic,
+            "is_bot": is_bot,
+            "origin": origin,
+            "close_time_ts": close_time,
+        })
+
+    # Sort descending by close timestamp (most recent exit first)
+    closed_data.sort(key=lambda x: x["close_time_ts"], reverse=True)
+    return closed_data
 
 
 class BotManager:
@@ -327,6 +498,11 @@ class BotManager:
         self.is_market_live: bool = False
         self.live_ma: float = 0.0
         self.live_rsi: float = 50.0
+        self.trade_excursions: Dict[str, Any] = load_trade_excursions()
+        self.last_excursions_save: float = 0.0
+        self.history_period: str = "7d"
+        self.session_profit: float = 0.0
+        self.session_deals: int = 0
 
     def load_persisted_config(self):
         if os.path.exists(CONFIG_FILE):
@@ -614,7 +790,29 @@ class BotManager:
             magics = {self.cfg.magic, self.cfg.magic_recovery}
             raw_pos = mt5.positions_get() or ()  # Fetch ALL open positions across all symbols
             pos_data = []
+            excursions_dirty = False
             for p in raw_pos:
+                ticket_str = str(p.ticket)
+                curr_pnl = round(float(p.profit + p.swap), 2)
+                if ticket_str not in self.trade_excursions:
+                    self.trade_excursions[ticket_str] = {
+                        "mfe": max(0.0, curr_pnl),
+                        "mae": min(0.0, curr_pnl),
+                    }
+                    excursions_dirty = True
+                else:
+                    exc = self.trade_excursions[ticket_str]
+                    if curr_pnl > exc.get("mfe", 0.0):
+                        exc["mfe"] = curr_pnl
+                        excursions_dirty = True
+                    if curr_pnl < exc.get("mae", 0.0):
+                        exc["mae"] = curr_pnl
+                        excursions_dirty = True
+
+                exc = self.trade_excursions.get(ticket_str, {})
+                mfe_val = round(float(exc.get("mfe", 0.0)), 2)
+                mae_val = round(float(exc.get("mae", 0.0)), 2)
+
                 is_bot = p.magic in magics
                 open_ts = int(p.time)
                 age_sec = max(0, server_now_ts - open_ts) if open_ts > 0 else 0
@@ -626,8 +824,13 @@ class BotManager:
                     "volume": float(p.volume),
                     "price_open": float(p.price_open),
                     "price_current": float(p.price_current),
-                    "profit": round(float(p.profit), 2),
+                    "sl": float(getattr(p, "sl", 0.0) or 0.0),
+                    "tp": float(getattr(p, "tp", 0.0) or 0.0),
+                    "profit": curr_pnl,
+                    "gross_profit": round(float(p.profit), 2),
                     "swap": round(float(p.swap), 2),
+                    "mfe": mfe_val,
+                    "mae": mae_val,
                     "time": t_open["local"],
                     "time_open": t_open["local"],
                     "time_open_server": t_open["server"],
@@ -638,42 +841,33 @@ class BotManager:
                 })
             self.positions_list = pos_data
 
-            # Fetch closed deals / trades for past 48 hours to guarantee full session coverage across timezones
-            now_dt = dt.datetime.now()
-            start_dt = now_dt - dt.timedelta(days=2)
-            end_dt = now_dt + dt.timedelta(days=1)
+            # Fetch closed deals / trades directly from MT5 based on selected history period (aligned with broker server time)
+            server_midnight = server_now_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_dt = server_now_dt + dt.timedelta(days=1)
+
+            if self.history_period == "today":
+                start_dt = server_midnight
+            elif self.history_period == "3d":
+                start_dt = server_now_dt - dt.timedelta(days=3)
+            elif self.history_period == "30d":
+                start_dt = server_now_dt - dt.timedelta(days=30)
+            elif self.history_period == "all":
+                start_dt = dt.datetime(2020, 1, 1)
+            else:  # "7d" default
+                start_dt = server_now_dt - dt.timedelta(days=7)
+
             deals = mt5.history_deals_get(start_dt, end_dt) or ()
-            ins = {d.position_id: d for d in deals if d.entry == 0}
-            outs = [d for d in deals if d.entry == 1]
-            closed_data = []
-            for out in reversed(outs):
-                in_d = ins.get(out.position_id)
-                pos_type = "BUY" if in_d and in_d.type == 0 else ("SELL" if in_d and in_d.type == 1 else ("BUY" if out.type == 1 else "SELL"))
-                open_p = float(in_d.price) if in_d else 0.0
-                is_b = bool(out.magic in magics or out.magic > 0)
-                in_time = int(in_d.time) if in_d else 0
-                out_time = int(out.time)
-                duration_sec = max(0, out_time - in_time) if in_time > 0 else 0
-                t_in = format_mt5_time(in_time, server_offset)
-                t_out = format_mt5_time(out_time, server_offset)
-                closed_data.append({
-                    "ticket": out.position_id,
-                    "type": pos_type,
-                    "volume": float(out.volume),
-                    "price_open": open_p,
-                    "price_close": float(out.price),
-                    "profit": round(float(out.profit + out.swap + out.commission), 2),
-                    "time_open": t_in["local"],
-                    "time_open_server": t_in["server"],
-                    "time_close": t_out["local"],
-                    "time_close_server": t_out["server"],
-                    "time": t_out["local"],
-                    "duration": format_duration(duration_sec),
-                    "magic": out.magic,
-                    "is_bot": is_b,
-                    "origin": "B" if is_b else "U",
-                })
-            self.closed_positions_list = closed_data
+            self.closed_positions_list = reconstruct_closed_positions(
+                deals=deals,
+                fetch_pos_deals_fn=lambda pid: mt5.history_deals_get(position=pid),
+                magics=magics,
+                server_offset=server_offset,
+                trade_excursions=self.trade_excursions,
+            )
+
+            if excursions_dirty and (time.time() - self.last_excursions_save > 5.0):
+                self.last_excursions_save = time.time()
+                save_trade_excursions(self.trade_excursions)
 
         except Exception as e:
             self.error_msg = str(e)
@@ -707,11 +901,24 @@ class BotManager:
                 # Intercept bot.log to forward to web events
                 orig_log = self.bot.log
 
-                def intercepted_log(ev, side, detail, price, basket, realized):
-                    orig_log(ev, side, detail, price, basket, realized)
+                def intercepted_log(ev, side, detail, price, basket, realized, mfe=None, mae=None):
+                    orig_log(ev, side, detail, price, basket, realized, mfe, mae)
                     time_str = dt.datetime.now().strftime("%H:%M:%S")
-                    msg = f"[{time_str}] {ev} {side} {detail} (Price: {price:.2f}, Basket: ${basket:.2f})"
-                    self.events.append({"time": time_str, "event": ev, "side": side, "detail": detail, "price": price, "basket": basket, "message": msg})
+                    mfe_val = self.bot.peak if mfe is None else mfe
+                    mae_val = self.bot.mae if mae is None else mae
+                    exc_str = f" [Peak: +${mfe_val:.2f}, Dip: -${abs(mae_val):.2f}]" if (mfe_val != 0 or mae_val != 0) else ""
+                    msg = f"[{time_str}] {ev} {side} {detail} (Price: {price:.2f}, Basket: ${basket:.2f}{exc_str})"
+                    self.events.append({
+                        "time": time_str,
+                        "event": ev,
+                        "side": side,
+                        "detail": detail,
+                        "price": price,
+                        "basket": basket,
+                        "mfe": mfe_val,
+                        "mae": mae_val,
+                        "message": msg
+                    })
 
                 self.bot.log = intercepted_log
 
@@ -909,8 +1116,9 @@ class BotManager:
 
                 if self.bot:
                     self.bot.c = self.cfg
-                    # Clear stale margin cooldown so new settings apply immediately
+                    # Clear stale margin cooldown and loss pause so new settings apply immediately
                     self.bot.margin_cooldown_until = 0
+                    self.bot.loss_cooldown_until = 0
                     self.bot.margin_reject_count = 0
                     self.bot.last_order_error = ""
                 self.save_persisted_config()
@@ -969,6 +1177,22 @@ class BotManager:
             rsi_os=getattr(self.cfg, "rsi_os", 30.0),
         )
 
+        server_offset = self.get_server_offset()
+        server_now_dt = dt.datetime.utcnow() + dt.timedelta(hours=server_offset)
+        server_midnight_ts = int(server_now_dt.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=dt.timezone.utc).timestamp())
+
+        today_bot_pos = [
+            p for p in self.closed_positions_list
+            if p.get("is_bot") and p.get("close_time_ts", 0) >= server_midnight_ts
+        ]
+        today_broker_pnl = sum(p["profit"] for p in today_bot_pos)
+        today_broker_deals = len(today_bot_pos)
+
+        sess_pnl = getattr(self.bot, "session_profit", self.session_profit) if self.bot else self.session_profit
+        sess_deals = getattr(self.bot, "session_deals", self.session_deals) if self.bot else self.session_deals
+        day_pnl = self.bot.daily if self.bot else today_broker_pnl
+        day_deals = self.bot.deals if self.bot else today_broker_deals
+
         bot_data = {}
         if self.bot:
             bot_data = {
@@ -976,8 +1200,12 @@ class BotManager:
                 "basket": round(self.bot.basket, 2),
                 "peak": round(self.bot.peak, 2),
                 "trail_stop": round(self.bot.trail_stop, 2),
-                "daily": round(self.bot.daily, 2),
-                "deals": self.bot.deals,
+                "daily": round(sess_pnl, 2),
+                "deals": sess_deals,
+                "session_profit": round(sess_pnl, 2),
+                "session_deals": sess_deals,
+                "broker_daily": round(day_pnl, 2),
+                "broker_deals": day_deals,
                 "nopen": self.bot.nopen,
                 "tp_price": round(self.bot.tp_price, 2),
                 "ma": round(ma_val, 2),
@@ -995,6 +1223,17 @@ class BotManager:
                 "sell_target_desc": telemetry["sell_target_desc"],
                 "sell_ready": telemetry["sell_ready"],
                 "in_entry_zone": telemetry["in_entry_zone"],
+                "lot_mult": round(self.cfg.lot_mult, 2),
+                "eff_grid_step_loss": round(self.cfg.eff_grid_step_loss, 2),
+                "eff_grid_sl": round(self.cfg.eff_grid_sl, 2),
+                "eff_trail_arm": round(self.cfg.eff_trail_arm, 2),
+                "eff_trail_min_lock": round(self.cfg.eff_trail_min_lock, 2),
+                "eff_grid_tp": round(self.cfg.eff_grid_tp, 2),
+                "eff_target_profit": round(self.cfg.eff_target_profit, 2),
+                "eff_bailout_target": round(self.cfg.eff_bailout_target, 2),
+                "loss_cooldown_rem": max(0, self.bot.loss_cooldown_until - int(time.time())) if self.bot.loss_cooldown_until > 0 else 0,
+                "basket_mfe": round(self.bot.peak, 2),
+                "basket_mae": round(self.bot.mae, 2),
             }
         else:
             bot_pos = [p for p in self.positions_list if p.get("is_bot")]
@@ -1012,8 +1251,12 @@ class BotManager:
                 "basket": bot_basket,
                 "peak": 0.0,
                 "trail_stop": 0.0,
-                "daily": 0.0,
-                "deals": 0,
+                "daily": round(sess_pnl, 2),
+                "deals": sess_deals,
+                "session_profit": round(sess_pnl, 2),
+                "session_deals": sess_deals,
+                "broker_daily": round(day_pnl, 2),
+                "broker_deals": day_deals,
                 "nopen": n_bot,
                 "tp_price": 0.0,
                 "ma": round(ma_val, 2),
@@ -1031,6 +1274,17 @@ class BotManager:
                 "sell_target_desc": telemetry["sell_target_desc"],
                 "sell_ready": telemetry["sell_ready"],
                 "in_entry_zone": telemetry["in_entry_zone"],
+                "lot_mult": round(self.cfg.lot_mult, 2),
+                "eff_grid_step_loss": round(self.cfg.eff_grid_step_loss, 2),
+                "eff_grid_sl": round(self.cfg.eff_grid_sl, 2),
+                "eff_trail_arm": round(self.cfg.eff_trail_arm, 2),
+                "eff_trail_min_lock": round(self.cfg.eff_trail_min_lock, 2),
+                "eff_grid_tp": round(self.cfg.eff_grid_tp, 2),
+                "eff_target_profit": round(self.cfg.eff_target_profit, 2),
+                "eff_bailout_target": round(self.cfg.eff_bailout_target, 2),
+                "loss_cooldown_rem": 0,
+                "basket_mfe": 0.0,
+                "basket_mae": 0.0,
             }
 
         cfg_dict = {f.name: getattr(self.cfg, f.name) for f in dataclasses.fields(Cfg)}
@@ -1050,6 +1304,7 @@ class BotManager:
             "telemetry": telemetry,
             "positions": self.positions_list,
             "closed_positions": self.closed_positions_list,
+            "history_period": self.history_period,
             "events": list(self.events),
             "pnl_history": list(self.pnl_history),
             "config": cfg_dict,
@@ -1160,6 +1415,28 @@ async def toggle_break_time(payload: Dict[str, Any]):
         if manager.bot:
             manager.bot.c.break_time = enabled
     return {"status": "ok", "break_time": enabled}
+
+
+@app.post("/api/history_period")
+async def set_history_period(payload: Dict[str, Any]):
+    period = str(payload.get("period", "7d")).strip().lower()
+    if period in ("today", "3d", "7d", "30d", "all"):
+        manager.history_period = period
+        manager.get_mt5_account_and_market()
+    return {"status": "ok", "period": manager.history_period}
+
+
+@app.post("/api/reset_goal")
+async def reset_goal():
+    with manager.lock:
+        manager.session_profit = 0.0
+        manager.session_deals = 0
+        if manager.bot:
+            manager.bot.session_profit = 0.0
+            manager.bot.session_deals = 0
+            manager.bot.daily = 0.0
+            manager.bot.deals = 0
+    return {"status": "ok", "message": "Session goal & deals reset."}
 
 
 @app.websocket("/ws")
