@@ -10,6 +10,7 @@ import datetime as dt
 import json
 import logging
 import os
+import re
 import sys
 import threading
 import time
@@ -36,13 +37,43 @@ logger = logging.getLogger("web_bot")
 app = FastAPI(title="Vantage XAUUSD Bot Dashboard")
 
 
-def format_local_tz(epoch_seconds: int) -> str:
+def format_mt5_time(epoch_seconds: int, server_offset_hours: float = 2.0) -> Dict[str, str]:
+    """
+    Converts MT5 broker server timestamps (which represent broker server wall-clock time)
+    into true Local IST time (India Standard Time, UTC+5:30) as well as displaying
+    the original MT5 server time for desktop cross-referencing.
+    """
     if not epoch_seconds or epoch_seconds <= 0:
-        return "---"
-    t = dt.datetime.fromtimestamp(epoch_seconds).astimezone()
-    tz = t.strftime("%z")
-    tz_fmt = f"{tz[:3]}:{tz[3:]}" if len(tz) >= 5 else tz
-    return t.strftime("%H:%M:%S") + f" ({tz_fmt})"
+        return {
+            "local": "---",
+            "server": "---",
+            "full": "---"
+        }
+    dt_server = dt.datetime.utcfromtimestamp(epoch_seconds)
+    # Subtract broker server UTC offset to get true UTC
+    dt_utc = dt_server - dt.timedelta(hours=server_offset_hours)
+    # Convert true UTC to machine local timezone (IST, UTC+5:30)
+    dt_local = dt_utc.replace(tzinfo=dt.timezone.utc).astimezone()
+
+    tz_name = dt_local.strftime("%Z")
+    if not tz_name or tz_name.startswith("+") or tz_name.startswith("-"):
+        tz_offset = dt_local.strftime("%z")
+        tz_name = f"UTC{tz_offset[:3]}:{tz_offset[3:]}" if len(tz_offset) >= 5 else (tz_offset or "IST")
+    elif "India" in tz_name:
+        tz_name = "IST"
+
+    local_str = dt_local.strftime("%H:%M:%S") + f" {tz_name}"
+    server_str = dt_server.strftime("%H:%M:%S") + " Server"
+
+    return {
+        "local": local_str,
+        "server": server_str,
+        "full": f"{local_str} ({server_str})"
+    }
+
+
+def format_local_tz(epoch_seconds: int, server_offset_hours: float = 2.0) -> str:
+    return format_mt5_time(epoch_seconds, server_offset_hours)["local"]
 
 
 def format_duration(sec: int) -> str:
@@ -250,6 +281,25 @@ def compute_entry_telemetry(
 
 
 CONFIG_FILE = os.path.join(HERE, "bot_config.json")
+SAVED_ACCOUNTS_FILE = os.path.join(HERE, "saved_accounts.json")
+
+
+def load_saved_accounts() -> Dict[str, Any]:
+    if not os.path.exists(SAVED_ACCOUNTS_FILE):
+        return {}
+    try:
+        with open(SAVED_ACCOUNTS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def save_saved_accounts(accounts: Dict[str, Any]):
+    try:
+        with open(SAVED_ACCOUNTS_FILE, "w", encoding="utf-8") as f:
+            json.dump(accounts, f, indent=2)
+    except Exception as e:
+        logger.error(f"Failed to save accounts: {e}")
 
 
 class BotManager:
@@ -299,6 +349,23 @@ class BotManager:
             except Exception as e:
                 logger.error(f"Failed to load persisted config: {e}")
 
+    def get_server_offset(self) -> float:
+        """
+        Computes the MT5 broker server's timezone offset from UTC in hours.
+        Broker servers (e.g. MetaQuotes, Vantage) almost universally run on EET (UTC+2 or UTC+3).
+        """
+        try:
+            sym = self.cfg.symbol or "XAUUSD"
+            tick = mt5.symbol_info_tick(sym)
+            if tick and tick.time > 0:
+                server_dt = dt.datetime.utcfromtimestamp(tick.time)
+                host_utc = dt.datetime.utcnow()
+                diff_sec = (server_dt - host_utc).total_seconds()
+                return round(diff_sec / 1800.0) * 0.5
+        except Exception:
+            pass
+        return 2.0  # Fallback default: UTC+2 (EET)
+
     def save_persisted_config(self):
         try:
             cfg_dict = {f.name: getattr(self.cfg, f.name) for f in dataclasses.fields(Cfg)}
@@ -308,13 +375,111 @@ class BotManager:
         except Exception as e:
             logger.error(f"Failed to save persisted config: {e}")
 
+    def get_available_accounts(self) -> List[Dict[str, Any]]:
+        """Pull active, saved, and log-discovered accounts from MetaTrader 5."""
+        accounts: Dict[int, Dict[str, Any]] = {}
+        saved = load_saved_accounts()
+
+        # 1. Populated saved accounts
+        for k, v in saved.items():
+            try:
+                l_num = int(k)
+                t_mode = v.get("trade_mode", "DEMO")
+                if t_mode == 0:
+                    t_mode = "DEMO"
+                elif t_mode == 1:
+                    t_mode = "REAL"
+                accounts[l_num] = {
+                    "login": l_num,
+                    "server": v.get("server", ""),
+                    "name": v.get("name", ""),
+                    "trade_mode": str(t_mode).upper(),
+                    "balance": float(v.get("balance", 0.0)),
+                    "equity": float(v.get("equity", 0.0)),
+                    "currency": v.get("currency", "USD"),
+                    "has_password": bool(v.get("password")),
+                    "active": False,
+                    "source": "saved",
+                }
+            except Exception:
+                pass
+
+        # 2. Add current active account from MT5
+        active_login = None
+        if self.account_info and self.account_info.get("login"):
+            try:
+                active_login = int(self.account_info["login"])
+                t_mode = self.account_info.get("trade_mode", "DEMO")
+                if t_mode == 0:
+                    t_mode = "DEMO"
+                elif t_mode == 1:
+                    t_mode = "REAL"
+                accounts[active_login] = {
+                    "login": active_login,
+                    "server": self.account_info.get("server", ""),
+                    "name": self.account_info.get("name", ""),
+                    "trade_mode": str(t_mode).upper(),
+                    "balance": float(self.account_info.get("balance", 0.0)),
+                    "equity": float(self.account_info.get("equity", 0.0)),
+                    "currency": self.account_info.get("currency", "USD"),
+                    "has_password": bool(saved.get(str(active_login), {}).get("password")),
+                    "active": True,
+                    "source": "active",
+                }
+            except Exception:
+                pass
+
+        # 3. Scan MT5 terminal logs for any other authorized accounts
+        try:
+            import MetaTrader5 as mt5
+            ti = mt5.terminal_info()
+            if ti and ti.data_path:
+                log_dir = os.path.join(ti.data_path, "logs")
+                if os.path.exists(log_dir):
+                    for fname in sorted(os.listdir(log_dir), reverse=True)[:5]:
+                        if fname.endswith(".log") and fname != "metaeditor.log":
+                            with open(os.path.join(log_dir, fname), "r", encoding="utf-16le", errors="ignore") as f:
+                                for line in f:
+                                    m = re.search(r"'(\d+)':\s+authorized on\s+([^\s\(\)]+)", line)
+                                    if m:
+                                        l_int = int(m.group(1))
+                                        s_str = m.group(2).strip()
+                                        if l_int not in accounts:
+                                            accounts[l_int] = {
+                                                "login": l_int,
+                                                "server": s_str,
+                                                "name": "",
+                                                "trade_mode": "DEMO" if "demo" in s_str.lower() else "REAL",
+                                                "balance": 0.0,
+                                                "equity": 0.0,
+                                                "currency": "USD",
+                                                "has_password": bool(saved.get(str(l_int), {}).get("password")),
+                                                "active": (l_int == active_login),
+                                                "source": "terminal",
+                                            }
+        except Exception:
+            pass
+
+        result = list(accounts.values())
+        result.sort(key=lambda x: (not x["active"], str(x["login"])))
+        return result
+
     def get_mt5_account_and_market(self):
         """Poll MT5 for account info, market tick, and positions without trading."""
         try:
             import MetaTrader5 as mt5
-            if not mt5.initialize(**bot_module.mt5_env()):
-                self.error_msg = f"MT5 initialize failed: {mt5.last_error()}"
-                return
+            # 1. Attach directly if an MT5 terminal is already open (don't force re-login!)
+            initialized = False
+            try:
+                initialized = mt5.initialize()
+            except Exception:
+                pass
+
+            if not initialized:
+                # 2. If not running, fall back to launch via .env credentials
+                if not mt5.initialize(**bot_module.mt5_env()):
+                    self.error_msg = f"MT5 initialize failed: {mt5.last_error()}"
+                    return
 
             self.error_msg = ""
             acc = mt5.account_info()
@@ -334,6 +499,25 @@ class BotManager:
                     "currency": acc.currency,
                     "algo_trading_allowed": bool(ti.trade_allowed) if ti else False,
                 }
+                # Sync into saved_accounts
+                try:
+                    s_accs = load_saved_accounts()
+                    l_str = str(acc.login)
+                    rec = s_accs.get(l_str, {})
+                    rec.update({
+                        "login": acc.login,
+                        "server": acc.server,
+                        "name": acc.name,
+                        "trade_mode": "DEMO" if acc.trade_mode == mt5.ACCOUNT_TRADE_MODE_DEMO else "REAL",
+                        "balance": float(acc.balance),
+                        "equity": float(acc.equity),
+                        "currency": acc.currency,
+                        "last_seen": dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    })
+                    s_accs[l_str] = rec
+                    save_saved_accounts(s_accs)
+                except Exception:
+                    pass
 
             sym = self.cfg.symbol
             mt5.symbol_select(sym, True)
@@ -423,14 +607,18 @@ class BotManager:
                             sym_list.append(name)
                     self.available_symbols = sym_list
 
+            server_offset = self.get_server_offset()
+            server_now_dt = dt.datetime.utcnow() + dt.timedelta(hours=server_offset)
+            server_now_ts = int(server_now_dt.replace(tzinfo=dt.timezone.utc).timestamp())
+
             magics = {self.cfg.magic, self.cfg.magic_recovery}
             raw_pos = mt5.positions_get() or ()  # Fetch ALL open positions across all symbols
             pos_data = []
-            now_ts = int(time.time())
             for p in raw_pos:
                 is_bot = p.magic in magics
                 open_ts = int(p.time)
-                age_sec = max(0, now_ts - open_ts) if open_ts > 0 else 0
+                age_sec = max(0, server_now_ts - open_ts) if open_ts > 0 else 0
+                t_open = format_mt5_time(open_ts, server_offset)
                 pos_data.append({
                     "ticket": p.ticket,
                     "symbol": p.symbol,
@@ -440,8 +628,9 @@ class BotManager:
                     "price_current": float(p.price_current),
                     "profit": round(float(p.profit), 2),
                     "swap": round(float(p.swap), 2),
-                    "time": format_local_tz(open_ts),
-                    "time_open": format_local_tz(open_ts),
+                    "time": t_open["local"],
+                    "time_open": t_open["local"],
+                    "time_open_server": t_open["server"],
                     "duration": format_duration(age_sec),
                     "magic": p.magic,
                     "is_bot": is_bot,
@@ -449,10 +638,11 @@ class BotManager:
                 })
             self.positions_list = pos_data
 
-            # Fetch closed deals / trades for past 24 hours
+            # Fetch closed deals / trades for past 48 hours to guarantee full session coverage across timezones
             now_dt = dt.datetime.now()
-            start_dt = now_dt - dt.timedelta(days=1)
-            deals = mt5.history_deals_get(start_dt, now_dt) or ()
+            start_dt = now_dt - dt.timedelta(days=2)
+            end_dt = now_dt + dt.timedelta(days=1)
+            deals = mt5.history_deals_get(start_dt, end_dt) or ()
             ins = {d.position_id: d for d in deals if d.entry == 0}
             outs = [d for d in deals if d.entry == 1]
             closed_data = []
@@ -464,6 +654,8 @@ class BotManager:
                 in_time = int(in_d.time) if in_d else 0
                 out_time = int(out.time)
                 duration_sec = max(0, out_time - in_time) if in_time > 0 else 0
+                t_in = format_mt5_time(in_time, server_offset)
+                t_out = format_mt5_time(out_time, server_offset)
                 closed_data.append({
                     "ticket": out.position_id,
                     "type": pos_type,
@@ -471,9 +663,11 @@ class BotManager:
                     "price_open": open_p,
                     "price_close": float(out.price),
                     "profit": round(float(out.profit + out.swap + out.commission), 2),
-                    "time_open": format_local_tz(in_time),
-                    "time_close": format_local_tz(out_time),
-                    "time": format_local_tz(out_time),
+                    "time_open": t_in["local"],
+                    "time_open_server": t_in["server"],
+                    "time_close": t_out["local"],
+                    "time_close_server": t_out["server"],
+                    "time": t_out["local"],
                     "duration": format_duration(duration_sec),
                     "magic": out.magic,
                     "is_bot": is_b,
@@ -622,14 +816,20 @@ class BotManager:
             except Exception as e:
                 return {"status": "error", "message": f"Emergency close failed: {e}"}
 
-    def login_mt5(self, login: Any, password: str, server: str, path: str = None) -> Dict[str, Any]:
+    def login_mt5(self, login: Any, password: str = "", server: str = "", path: str = None) -> Dict[str, Any]:
         with self.lock:
             try:
                 import MetaTrader5 as mt5
-                terminal_path = path or r"C:\Program Files\MetaTrader 5\terminal64.exe"
                 login_int = int(str(login).strip())
-                pass_str = str(password).strip()
-                server_str = str(server).strip()
+                saved = load_saved_accounts()
+                rec = saved.get(str(login_int), {})
+
+                pass_str = str(password).strip() if password else rec.get("password", "")
+                server_str = str(server).strip() if server else rec.get("server", "")
+                terminal_path = path or rec.get("path") or r"C:\Program Files\MetaTrader 5\terminal64.exe"
+
+                if not pass_str or not server_str:
+                    return {"status": "error", "message": f"Trading password and broker server are required for account #{login_int}."}
 
                 bot_module.save_mt5_env(login_int, pass_str, server_str, terminal_path)
 
@@ -650,8 +850,19 @@ class BotManager:
                     return {"status": "error", "message": f"Login failed ({err}). Check account number, password, and server name."}
 
                 self.error_msg = ""
+                # Update saved_accounts.json
+                rec.update({
+                    "login": login_int,
+                    "server": server_str,
+                    "password": pass_str,
+                    "path": terminal_path,
+                    "last_seen": dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                })
+                saved[str(login_int)] = rec
+                save_saved_accounts(saved)
+
                 self.get_mt5_account_and_market()
-                return {"status": "ok", "message": f"Successfully connected to MT5 account #{login_int} @ {server_str}!"}
+                return {"status": "ok", "message": f"Successfully switched to MT5 account #{login_int} @ {server_str}!"}
             except Exception as e:
                 self.error_msg = str(e)
                 return {"status": "error", "message": f"Login error: {e}"}
@@ -833,6 +1044,7 @@ class BotManager:
             "symbol": self.cfg.symbol,
             "symbols": self.available_symbols,
             "account": self.account_info,
+            "accounts": self.get_available_accounts(),
             "market": self.last_tick,
             "bot": bot_data,
             "telemetry": telemetry,
@@ -875,6 +1087,24 @@ async def get_state():
     return manager.snapshot()
 
 
+@app.get("/api/accounts")
+async def get_accounts():
+    return manager.get_available_accounts()
+
+
+@app.post("/api/switch-account")
+async def switch_account(payload: Dict[str, Any]):
+    login = payload.get("login")
+    password = payload.get("password", "")
+    server = payload.get("server", "")
+    path = payload.get("path")
+    if not login:
+        return {"status": "error", "message": "Account login is required."}
+    if manager.is_running:
+        return {"status": "error", "message": "Cannot switch accounts while the bot is actively running. Stop the bot first."}
+    return manager.login_mt5(login, password, server, path)
+
+
 @app.post("/api/mt5-login")
 async def mt5_login(payload: Dict[str, Any]):
     login = payload.get("login")
@@ -883,6 +1113,8 @@ async def mt5_login(payload: Dict[str, Any]):
     path = payload.get("path")
     if not login or not password or not server:
         return {"status": "error", "message": "Account login, password, and broker server name are required."}
+    if manager.is_running:
+        return {"status": "error", "message": "Cannot switch accounts while the bot is actively running. Stop the bot first."}
     return manager.login_mt5(login, password, server, path)
 
 

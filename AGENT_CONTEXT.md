@@ -162,6 +162,42 @@ The following real-time failures occurred during live testing and trading sessio
 
 ---
 
+### Case 14: Multi-Account Auto-Discovery and Seamless Account Switching
+* **The Issue**: When MT5 was already open and logged in, the UI previously popped up a login modal asking the user to manually enter their account number, password, and server. Furthermore, there was no way to easily switch between multiple accounts.
+* **The Resolution**:
+  1. Updated `web_app.py` and `up_down_tracker_win_bot_xauusd.py` to prioritize attaching directly to the running MT5 terminal session via `mt5.initialize()` without arguments. Zero credentials or login screens required when MT5 is already active.
+  2. Implemented `get_available_accounts()` which automatically scans active MT5 accounts, terminal authorization logs (`data_path/logs/*.log`), and `saved_accounts.json`.
+  3. Built an interactive **Account Switcher Dropdown** in the dashboard header showing the active account pill (`#Login • Server • Balance • DEMO/REAL`), allowing instant 1-click switching between accounts with live synchronization when accounts are changed inside MT5 desktop.
+
+---
+
+### Case 15: Dynamic Global Tooltip Portal & Collision Edge Detection
+* **The Issue**: Inline static CSS tooltips (`position: absolute`) were getting truncated at card boundaries due to parent `overflow-hidden` (such as Card 1 and Card 2) or getting hidden underneath subsequent sections due to nested stacking contexts. Top-row badges (like `TREND: BEARISH`) also popped upwards off-screen or were cut in half.
+* **The Resolution**:
+  1. Replaced nested inline tooltip rendering with a **Dynamic Global Tooltip Portal** (`#global-tooltip`) mounted directly onto `document.body` with `position: fixed` and `z-index: 999999`. This renders above all elements and is 100% immune to parent `overflow-hidden`, scrolling table clipping, or section stacking contexts.
+  2. Implemented real-time **Collision & Viewport Edge Detection**:
+     - *Vertical Collision*: Measures available space above vs. below. If top room is $< \text{height} + \text{gap} + \text{margin}$, it dynamically flips to display **BELOW** the target (`arrow-up`), preventing top-boundary clipping.
+     - *Horizontal Clamping*: Calculates anchor center and clamps the box within viewport borders ($12\text{px}$ safety margin) on both left and right edges.
+     - *Pinpoint Dynamic Arrow*: Calculates relative anchor offset and slides the arrow along the box edge so it always points precisely at the `ⓘ` icon without protruding past rounded corners.
+  3. Added scroll & resize dismiss listeners (`capture: true`) and touch device toggle support. Removed unnecessary `overflow-hidden` classes from Card 1 and Card 2.
+
+---
+
+### Case 16: MT5 Broker Server Time vs Local IST Timezone Synchronization
+* **The Issue**: Trade entry and exit timestamps in the web dashboard were shifted 2 hours into the future, and users were uncertain whether the MT5 desktop terminal itself displays IST time.
+* **The Root Cause**:
+  1. **MT5 Desktop Behavior**: MetaTrader 5 desktop client by design strictly displays **Broker Server Time** (EET, UTC+2 / UTC+3) in its charts, Market Watch, and Trade History. It has no native setting to convert history to the user's local operating system timezone (IST).
+  2. **Timestamp Double-Offset Bug**: MT5 Python API returns timestamp integers representing the broker's server wall-clock time. When passed directly to Python's `datetime.fromtimestamp().astimezone()` on an IST machine, Python assumed the timestamp was UTC and added another +5:30 on top of the server's +2:00, resulting in a +7:30 offset (+2 hours ahead of real IST).
+  3. **Open Position Duration Bug**: Calculating age via `time.time() - p.time` subtracted a Server timestamp (19:00) from a UTC timestamp (17:00), causing negative/0s duration.
+* **The Resolution**:
+  1. Added `get_server_offset()` in `web_app.py` to automatically detect the broker server's UTC offset from live ticks (typically UTC+2.0 EET).
+  2. Implemented `format_mt5_time(epoch_seconds, server_offset_hours)` which converts:
+     $$\text{Server Wall Clock} - \text{Server Offset} = \text{True UTC} \longrightarrow \text{True IST (UTC+5:30)}$$
+  3. Standardized position age calculations using normalized server timestamps.
+  4. Updated Open and Closed position tables in `templates/index.html` to prominently show exact **Indian Standard Time (IST)**, while also displaying the corresponding MT5 Server Time underneath for instant 1:1 cross-referencing with the MT5 desktop client.
+
+---
+
 ## 3. Comprehensive Feature Catalog
 
 ### 1. Strategy Engines (`up_down_tracker_win_bot_xauusd.py`)

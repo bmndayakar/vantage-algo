@@ -1,0 +1,14 @@
+{
+  "10013344276": {
+    "login": 10013344276,
+    "server": "MetaQuotes-Demo",
+    "password": "KqZ!F7Nf",
+    "name": "MehAlg Test1",
+    "trade_mode": "DEMO",
+    "path": "C:\\Program Files\\MetaTrader 5\\terminal64.exe",
+    "last_seen": "2026-10-28 22:51:40",
+    "balance": 100004.3,
+    "equity": 100004.4,
+    "currency": "USD"
+  }
+}

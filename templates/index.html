@@ -35,6 +35,111 @@
     ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 3px; }
     .dark ::-webkit-scrollbar-thumb { background: #334155; }
     ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+    /* Elegant Metric Tooltip System */
+    .has-tooltip {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+    }
+    .tip-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 13px;
+      height: 13px;
+      border-radius: 9999px;
+      background-color: rgba(148, 163, 184, 0.2);
+      color: #94a3b8;
+      font-size: 9px;
+      font-weight: 700;
+      font-style: italic;
+      font-family: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+      cursor: help;
+      transition: all 0.15s ease-in-out;
+      flex-shrink: 0;
+      user-select: none;
+      line-height: 1;
+      margin-left: 4px;
+    }
+    .tip-icon:hover {
+      background-color: rgba(245, 158, 11, 0.25);
+      color: #f59e0b;
+      transform: scale(1.1);
+    }
+    .dark .tip-icon {
+      background-color: rgba(148, 163, 184, 0.15);
+      color: #64748b;
+    }
+    .dark .tip-icon:hover {
+      background-color: rgba(245, 158, 11, 0.3);
+      color: #fbbf24;
+      transform: scale(1.1);
+    }
+    /* Hide inline tooltip box - acts as data template store for global floating tooltip */
+    .tooltip-box {
+      display: none !important;
+    }
+
+    /* Dynamic Global Floating Tooltip (Collision-Aware, Immune to Overflow & Stacking) */
+    .global-tooltip {
+      position: fixed;
+      z-index: 999999;
+      pointer-events: none;
+      max-width: 270px;
+      width: max-content;
+      min-width: 170px;
+      padding: 8px 11px;
+      background-color: rgba(15, 23, 42, 0.98);
+      color: #f8fafc;
+      font-size: 11px;
+      line-height: 1.4;
+      font-weight: 400;
+      text-align: left;
+      border-radius: 10px;
+      box-shadow: 0 14px 30px -4px rgba(0, 0, 0, 0.5), 0 8px 12px -6px rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(51, 65, 85, 0.8);
+      backdrop-filter: blur(10px);
+      white-space: normal;
+      opacity: 0;
+      transform: scale(0.96);
+      transition: opacity 0.12s cubic-bezier(0.16, 1, 0.3, 1), transform 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .dark .global-tooltip {
+      background-color: rgba(30, 41, 59, 0.98);
+      border: 1px solid rgba(71, 85, 105, 0.85);
+      color: #f1f5f9;
+      box-shadow: 0 14px 30px -4px rgba(0, 0, 0, 0.7), 0 8px 12px -6px rgba(0, 0, 0, 0.5);
+    }
+    .global-tooltip.show {
+      opacity: 1;
+      transform: scale(1);
+    }
+    .global-tooltip-arrow {
+      position: absolute;
+      width: 0;
+      height: 0;
+      border-style: solid;
+      pointer-events: none;
+    }
+    /* When tooltip is ABOVE target -> arrow points DOWN */
+    .global-tooltip.arrow-down .global-tooltip-arrow {
+      top: 100%;
+      border-width: 6px 6px 0 6px;
+      border-color: rgba(15, 23, 42, 0.98) transparent transparent transparent;
+    }
+    .dark .global-tooltip.arrow-down .global-tooltip-arrow {
+      border-color: rgba(30, 41, 59, 0.98) transparent transparent transparent;
+    }
+    /* When tooltip is BELOW target -> arrow points UP */
+    .global-tooltip.arrow-up .global-tooltip-arrow {
+      bottom: 100%;
+      border-width: 0 6px 6px 6px;
+      border-color: transparent transparent rgba(15, 23, 42, 0.98) transparent;
+    }
+    .dark .global-tooltip.arrow-up .global-tooltip-arrow {
+      border-color: transparent transparent rgba(30, 41, 59, 0.98) transparent;
+    }
   </style>
 </head>
 <body class="bg-slate-100 dark:bg-[#0b1120] text-slate-800 dark:text-slate-100 min-h-screen flex flex-col antialiased transition-colors duration-200">
@@ -65,28 +170,62 @@
           <span id="txt-mt5" class="font-medium text-slate-700 dark:text-slate-300">Checking MT5...</span>
         </div>
 
-        <!-- Account Badge -->
-        <div id="badge-acc" class="hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-mono">
-          <span id="txt-acc-num">#---</span>
-          <span id="txt-acc-type" class="px-1.5 py-0.5 rounded text-[10px] bg-slate-200 dark:bg-slate-700 font-bold">DEMO</span>
-        </div>
-
         <!-- Algo Trading Badge -->
         <div id="badge-algo" class="hidden md:flex items-center px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400">
-          Algo Trading: <span id="txt-algo" class="ml-1 font-semibold text-slate-700 dark:text-slate-300">---</span>
+          <span class="has-tooltip inline-flex items-center">
+            <span>Algo Trading:</span>
+            <span class="tip-icon">i</span>
+            <span class="tooltip-box">
+              <strong class="block text-amber-400 font-semibold mb-0.5">MT5 Algo Trading Permission</strong>
+              Must be toggled ON in the MetaTrader 5 desktop toolbar to allow the automated Python trading bot to execute orders.
+            </span>
+          </span>
+          <span id="txt-algo" class="ml-1 font-semibold text-slate-700 dark:text-slate-300">---</span>
         </div>
 
         <!-- Market Live Badge -->
         <div id="badge-market" class="hidden sm:flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs">
           <span id="dot-market" class="w-2.5 h-2.5 rounded-full bg-slate-400 dark:bg-slate-500"></span>
-          <span id="txt-market" class="font-semibold text-slate-600 dark:text-slate-300">Market: Checking...</span>
+          <span class="has-tooltip inline-flex items-center">
+            <span id="txt-market" class="font-semibold text-slate-600 dark:text-slate-300">Market: Checking...</span>
+            <span class="tip-icon">i</span>
+            <span class="tooltip-box">
+              <strong class="block text-amber-400 font-semibold mb-0.5">Live Broker Market Feed</strong>
+              Indicates whether live tick quotes are streaming from the broker. Forex/Gold markets operate 24/5 (Mon 00:00 - Fri 23:59 Server Time).
+            </span>
+          </span>
         </div>
 
-        <!-- Account Switcher Button (Always accessible) -->
-        <button id="btn-open-login" onclick="openLoginModal()" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 font-semibold cursor-pointer transition" title="Switch MT5 Account (Demo / Live)">
-          <span>🔑</span>
-          <span>Switch Account</span>
-        </button>
+        <!-- Interactive Account Selector & Switcher Dropdown -->
+        <div class="relative inline-block text-left" id="account-dropdown-wrapper">
+          <button id="btn-account-menu" onclick="toggleAccountDropdown(event)" class="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700/80 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-mono text-xs transition cursor-pointer shadow-sm" title="Active Trading Account (Click to Select / Switch Account)">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 pulse-dot flex-shrink-0" id="dot-active-acc"></span>
+            <span id="txt-acc-num" class="font-bold">#---</span>
+            <span id="txt-acc-type" class="px-1.5 py-0.2 rounded text-[10px] bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-extrabold border border-emerald-500/25">DEMO</span>
+            <span id="txt-acc-bal-pill" class="text-slate-500 dark:text-slate-400 font-semibold hidden xl:inline">$0.00</span>
+            <svg class="w-3.5 h-3.5 text-slate-400 transition-transform duration-200" id="icon-acc-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+          </button>
+
+          <!-- Dropdown Popover -->
+          <div id="account-dropdown-menu" class="hidden absolute right-0 mt-2 w-80 rounded-2xl shadow-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 z-50 p-2.5 space-y-2 text-xs">
+            <div class="px-2 py-1 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <span class="font-extrabold uppercase tracking-wider text-[10px] text-slate-400 dark:text-slate-500">Trading Accounts</span>
+              <span class="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">Auto-Synced from MT5</span>
+            </div>
+
+            <div id="account-list-container" class="max-h-60 overflow-y-auto space-y-1.5 py-1">
+              <!-- Dynamically populated accounts -->
+            </div>
+
+            <div class="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between px-2">
+              <span class="text-[10px] text-slate-400 dark:text-slate-500">MT5 app changes sync live</span>
+              <button onclick="openLoginModal()" class="text-amber-600 dark:text-amber-400 hover:underline text-[11px] font-bold flex items-center space-x-1">
+                <span>➕</span>
+                <span>Connect Account</span>
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- TOP CONTROL ACTIONS -->
@@ -100,14 +239,28 @@
         <label class="flex items-center space-x-1.5 text-xs text-slate-700 dark:text-slate-300 cursor-pointer bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/80 dark:hover:bg-slate-800 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700">
           <input type="checkbox" id="chk-allow-real" class="w-4 h-4 rounded bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-amber-500 focus:ring-amber-500">
           <span class="font-medium">Allow Real</span>
+          <span class="has-tooltip inline-flex items-center">
+            <span class="tip-icon">i</span>
+            <span class="tooltip-box tip-right">
+              <strong class="block text-amber-400 font-semibold mb-0.5">Real Money Interlock</strong>
+              Safety guard: when unchecked, live order execution is blocked on Real accounts (Demo only). Check only when ready to execute with real capital.
+            </span>
+          </span>
         </label>
 
         <!-- Break Time ☕ Toggle Button -->
-        <label id="lbl-break-time-container" class="flex items-center space-x-1.5 text-xs text-amber-800 dark:text-amber-300 cursor-pointer bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/10 dark:hover:bg-amber-500/20 px-3 py-2 rounded-lg border border-amber-300 dark:border-amber-500/30 transition select-none" title="Break Time ☕: Finish active trades & exit safely, but block all new orders until unchecked">
+        <label id="lbl-break-time-container" class="flex items-center space-x-1.5 text-xs text-amber-800 dark:text-amber-300 cursor-pointer bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/10 dark:hover:bg-amber-500/20 px-3 py-2 rounded-lg border border-amber-300 dark:border-amber-500/30 transition select-none">
           <input type="checkbox" id="chk-break-time" onchange="toggleBreakTime(this.checked)" class="w-4 h-4 rounded bg-white dark:bg-slate-900 border-amber-400 text-amber-500 focus:ring-amber-500">
           <span class="font-bold flex items-center space-x-1">
             <span>☕</span>
             <span class="hidden sm:inline">Break Time</span>
+            <span class="has-tooltip inline-flex items-center">
+              <span class="tip-icon">i</span>
+              <span class="tooltip-box tip-right">
+                <strong class="block text-amber-400 font-semibold mb-0.5">Break Time Pause ☕</strong>
+                Graceful pause mode: finishes and exits active trades at profit target, but blocks all new orders until unchecked.
+              </span>
+            </span>
           </span>
         </label>
 
@@ -156,11 +309,18 @@
       <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-3.5">
       
       <!-- CARD 1: MARKET PRICE & MA (Enlarged Slate) -->
-      <div id="card-price" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3.5 shadow-sm relative overflow-hidden transition-all duration-300 col-span-2 sm:col-span-2 md:col-span-2 lg:col-span-2 flex flex-col justify-between">
+      <div id="card-price" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3.5 shadow-sm relative transition-all duration-300 col-span-2 sm:col-span-2 md:col-span-2 lg:col-span-2 flex flex-col justify-between">
         <!-- Top bar: Symbol & Badges -->
         <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1.5">
           <div class="flex items-center space-x-1.5">
-            <span class="text-sm text-amber-500">⚡</span>
+            <span class="has-tooltip inline-flex items-center">
+              <span class="text-sm text-amber-500">⚡</span>
+              <span class="tip-icon">i</span>
+              <span class="tooltip-box tip-left">
+                <strong class="block text-amber-400 font-semibold mb-0.5">Traded Asset</strong>
+                Select financial instrument. Syncs live tick data, contract sizing, MA calculations, and spread monitoring.
+              </span>
+            </span>
             <select id="select-symbol" onchange="onSymbolChange(this.value)" class="bg-transparent font-bold text-slate-900 dark:text-white border-b border-dashed border-slate-300 dark:border-slate-700 py-0.5 pr-2 focus:outline-none cursor-pointer text-xs sm:text-sm font-mono hover:border-amber-500 transition">
               <option value="XAUUSD">XAUUSD (Gold)</option>
               <option value="EURUSD">EURUSD</option>
@@ -173,7 +333,14 @@
           </div>
           <div class="flex items-center space-x-1.5">
             <span id="badge-market-tag" class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700">CLOSED</span>
-            <span id="badge-trend" class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400" title="Macro 250-period Moving Average Trend">TREND: ---</span>
+            <span class="has-tooltip inline-flex items-center">
+              <span id="badge-trend" class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">TREND: ---</span>
+              <span class="tip-icon">i</span>
+              <span class="tooltip-box tip-right">
+                <strong class="block text-amber-400 font-semibold mb-0.5">Macro MA Trend</strong>
+                Price above 250-period MA indicates a BULLISH trend (buys favored). Price below indicates a BEARISH trend (sells favored).
+              </span>
+            </span>
           </div>
         </div>
 
@@ -185,24 +352,67 @@
             <div class="text-[11px] text-slate-500 dark:text-slate-400 flex items-center space-x-2 font-mono whitespace-nowrap mt-1">
               <span>Ask: <span id="txt-ask" class="font-semibold text-slate-800 dark:text-slate-200">0.00</span></span>
               <span class="text-slate-300 dark:text-slate-700">•</span>
-              <span>Spr: <span id="txt-spread" class="text-amber-600 dark:text-amber-400 font-bold">0.00</span></span>
+              <span class="has-tooltip inline-flex items-center">
+                <span>Spr:</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-left">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Broker Spread</strong>
+                  Difference between Ask and Bid ($Ask - Bid$). Orders are automatically blocked if spread exceeds max_spread.
+                </span>
+              </span>
+              <span id="txt-spread" class="text-amber-600 dark:text-amber-400 font-bold">0.00</span>
             </div>
           </div>
 
           <!-- Sub-panel Right: Compact MA Technical Slate -->
           <div class="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-2.5 border border-slate-100 dark:border-slate-800 text-[11px] space-y-1">
             <div class="flex justify-between items-center whitespace-nowrap">
-              <span class="text-slate-500 dark:text-slate-400">MA: <span id="txt-ma" class="font-mono font-bold text-slate-900 dark:text-white">---</span></span>
+              <span class="text-slate-500 dark:text-slate-400 has-tooltip inline-flex items-center">
+                <span>MA: <span id="txt-ma" class="font-mono font-bold text-slate-900 dark:text-white">---</span></span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-left">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Moving Average (MA-250)</strong>
+                  250-period Simple Moving Average on 1-minute bars. Forms the primary trend baseline and pullback reference.
+                </span>
+              </span>
               <span class="text-slate-300 dark:text-slate-700 mx-1">|</span>
-              <span class="text-slate-500 dark:text-slate-400">RSI: <span id="txt-rsi" class="font-mono font-bold text-slate-900 dark:text-white">50.0</span></span>
+              <span class="text-slate-500 dark:text-slate-400 has-tooltip inline-flex items-center">
+                <span>RSI: <span id="txt-rsi" class="font-mono font-bold text-slate-900 dark:text-white">50.0</span></span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-right">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">RSI-14 Momentum Oscillator</strong>
+                  Momentum filter. Blocks BUY when &ge; 70 (Overbought climax) and blocks SELL when &le; 30 (Oversold floor).
+                </span>
+              </span>
             </div>
             <div class="flex justify-between items-center whitespace-nowrap pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
-              <span class="text-slate-500 dark:text-slate-400">Dist: <span id="txt-ma-dist" class="font-mono font-bold text-slate-800 dark:text-slate-200">---</span></span>
+              <span class="text-slate-500 dark:text-slate-400 has-tooltip inline-flex items-center">
+                <span>Dist: <span id="txt-ma-dist" class="font-mono font-bold text-slate-800 dark:text-slate-200">---</span></span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-left">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Current MA Distance</strong>
+                  Absolute dollar distance between current price and the 250 MA (|Price - MA|).
+                </span>
+              </span>
               <span class="text-slate-300 dark:text-slate-700 mx-1">|</span>
-              <span class="text-slate-500 dark:text-slate-400">Cap: <span id="txt-ma-max-dist" class="font-mono font-bold text-amber-600 dark:text-amber-400">---</span></span>
+              <span class="text-slate-500 dark:text-slate-400 has-tooltip inline-flex items-center">
+                <span>Cap: <span id="txt-ma-max-dist" class="font-mono font-bold text-amber-600 dark:text-amber-400">---</span></span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-right">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Overextension Cap</strong>
+                  Max distance limit (max_ma_dist). If price stretches beyond this threshold, new entries are blocked.
+                </span>
+              </span>
             </div>
             <div class="flex justify-between items-center whitespace-nowrap pt-1 border-t border-slate-200/60 dark:border-slate-700/60 min-w-0">
-              <span class="text-slate-500 dark:text-slate-400 flex-shrink-0 mr-1.5">Target:</span>
+              <span class="text-slate-500 dark:text-slate-400 flex-shrink-0 mr-1.5 has-tooltip inline-flex items-center">
+                <span>Target:</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-right">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Next Entry Trigger</strong>
+                  Target price level or pullback condition required for the engine to fire the next order.
+                </span>
+              </span>
               <span id="txt-entry-target" class="font-mono font-extrabold text-emerald-600 dark:text-emerald-400 truncate text-right text-[11px]" title="">---</span>
             </div>
           </div>
@@ -210,18 +420,46 @@
       </div>
 
       <!-- CARD 2: BASKET FLOATING P&L -->
-      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3.5 shadow-sm relative overflow-hidden transition-colors flex flex-col justify-between">
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3.5 shadow-sm relative transition-colors flex flex-col justify-between">
         <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-0.5">
-          <span class="font-medium">Basket P&L</span>
-          <span class="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500">Open Legs</span>
+          <span class="has-tooltip inline-flex items-center">
+            <span class="font-medium">Basket P&L</span>
+            <span class="tip-icon">i</span>
+            <span class="tooltip-box tip-left">
+              <strong class="block text-amber-400 font-semibold mb-0.5">Basket Floating P&L</strong>
+              Combined net unrealized profit/loss across all active bot positions, including open floating gains, swap, and commissions.
+            </span>
+          </span>
+          <span class="has-tooltip inline-flex items-center">
+            <span class="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500">Open Legs</span>
+            <span class="tip-icon">i</span>
+            <span class="tooltip-box tip-right">
+              <strong class="block text-amber-400 font-semibold mb-0.5">Active Position Count</strong>
+              Total number of active positions currently open in the market.
+            </span>
+          </span>
         </div>
         <div class="text-2xl font-black font-mono tracking-tight my-0.5" id="txt-basket-pnl">$0.00</div>
         <div class="text-[11px] text-slate-500 dark:text-slate-400 flex justify-between mt-0.5">
-          <span>TP Target:</span>
+          <span class="has-tooltip inline-flex items-center">
+            <span>TP Target:</span>
+            <span class="tip-icon">i</span>
+            <span class="tooltip-box tip-left">
+              <strong class="block text-amber-400 font-semibold mb-0.5">Take-Profit Target</strong>
+              Collective breakeven price level where the entire multi-leg grid basket achieves target profit and liquidates.
+            </span>
+          </span>
           <span id="txt-tp-price" class="font-mono text-slate-700 dark:text-slate-300">---</span>
         </div>
         <div class="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 pt-1 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between min-w-0">
-          <span class="flex-shrink-0 mr-1.5">Status:</span>
+          <span class="flex-shrink-0 mr-1.5 has-tooltip inline-flex items-center">
+            <span>Status:</span>
+            <span class="tip-icon">i</span>
+            <span class="tooltip-box tip-left">
+              <strong class="block text-amber-400 font-semibold mb-0.5">Strategy State</strong>
+              Real-time phase: tracking pullbacks, waiting for bounces, holding trailing stops, cooling down, or monitoring.
+            </span>
+          </span>
           <span id="txt-bot-status" class="font-semibold text-amber-600 dark:text-amber-400 text-right truncate" title="Engine Status">IDLE</span>
         </div>
       </div>
@@ -229,7 +467,14 @@
       <!-- CARD 3: GRID LEGS & EXPOSURE -->
       <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3.5 shadow-sm transition-colors flex flex-col justify-between">
         <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-0.5">
-          <span class="font-medium">Grid Stack</span>
+          <span class="has-tooltip inline-flex items-center">
+            <span class="font-medium">Grid Stack</span>
+            <span class="tip-icon">i</span>
+            <span class="tooltip-box">
+              <strong class="block text-amber-400 font-semibold mb-0.5">Loss Grid Layers</strong>
+              Active legs vs maximum allowed legs (grid_max_legs). If price moves against an initial trade, additional legs open at fixed dollar step intervals.
+            </span>
+          </span>
           <span id="txt-legs-count" class="font-bold text-slate-800 dark:text-slate-200">0 / 3 Legs</span>
         </div>
         <!-- Dots visualizer for 5 legs -->
@@ -241,7 +486,14 @@
           <div class="h-2 flex-1 rounded-full bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700"></div>
         </div>
         <div class="text-[11px] text-slate-500 dark:text-slate-400 flex justify-between mt-1 pt-1 border-t border-slate-100 dark:border-slate-800">
-          <span>Exposure:</span>
+          <span class="has-tooltip inline-flex items-center">
+            <span>Exposure:</span>
+            <span class="tip-icon">i</span>
+            <span class="tooltip-box">
+              <strong class="block text-amber-400 font-semibold mb-0.5">Margin Exposure %</strong>
+              Percentage of account equity consumed by open margin (Margin / Equity &times; 100%). Keep under 20% for safe risk management.
+            </span>
+          </span>
           <span id="txt-exposure" class="font-mono text-slate-700 dark:text-slate-300">0.0%</span>
         </div>
       </div>
@@ -249,13 +501,34 @@
       <!-- CARD 4: TRAILING STOP STATUS -->
       <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3.5 shadow-sm transition-colors flex flex-col justify-between">
         <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-0.5">
-          <span class="font-medium">Trailing Stop</span>
+          <span class="has-tooltip inline-flex items-center">
+            <span class="font-medium">Trailing Stop</span>
+            <span class="tip-icon">i</span>
+            <span class="tooltip-box tip-right">
+              <strong class="block text-amber-400 font-semibold mb-0.5">Profit-Peak Trailing Exit</strong>
+              High-water mark trailing engine. Once profit crosses the arm threshold, it secures a trailing stop behind peak profit to let runners run.
+            </span>
+          </span>
           <span id="txt-trail-on" class="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">ACTIVE</span>
         </div>
         <div class="text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400 my-0.5" id="txt-peak">Peak: $0.00</div>
-        <div class="text-[11px] font-mono text-slate-700 dark:text-slate-300" id="txt-trail-stop">Lock: $0.00</div>
+        <div class="text-[11px] font-mono text-slate-700 dark:text-slate-300 has-tooltip inline-flex items-center" id="txt-trail-stop-wrapper">
+          <span id="txt-trail-stop">Lock: $0.00</span>
+          <span class="tip-icon">i</span>
+          <span class="tooltip-box tip-right">
+            <strong class="block text-amber-400 font-semibold mb-0.5">Guaranteed Profit Floor</strong>
+            Locked profit floor. If basket profit pulls back below this dollar value, all positions immediately close to preserve gain.
+          </span>
+        </div>
         <div class="text-[10px] text-slate-400 dark:text-slate-500 mt-1.5 pt-1 border-t border-slate-100 dark:border-slate-800 flex justify-between">
-          <span>Arm threshold:</span>
+          <span class="has-tooltip inline-flex items-center">
+            <span>Arm threshold:</span>
+            <span class="tip-icon">i</span>
+            <span class="tooltip-box tip-right">
+              <strong class="block text-amber-400 font-semibold mb-0.5">Trailing Activation Gate</strong>
+              Minimum basket profit (trail_arm) required before the trailing stop activates and begins locking profit.
+            </span>
+          </span>
           <span id="txt-trail-arm" class="font-mono text-slate-700 dark:text-slate-300">$1.00</span>
         </div>
       </div>
@@ -263,7 +536,14 @@
       <!-- CARD 5: DAILY GOAL PROGRESS (Compact 1-Column) -->
       <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3.5 shadow-sm col-span-1 transition-colors flex flex-col justify-between">
         <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-0.5">
-          <span class="font-medium">Daily Goal</span>
+          <span class="has-tooltip inline-flex items-center">
+            <span class="font-medium">Daily Goal</span>
+            <span class="tip-icon">i</span>
+            <span class="tooltip-box tip-right">
+              <strong class="block text-amber-400 font-semibold mb-0.5">Daily Profit Target</strong>
+              Cumulative realized profit target for the day. Once banked, the engine automatically suspends trading to lock in daily wins.
+            </span>
+          </span>
           <span id="txt-deals-count" class="text-[10px] text-slate-400 dark:text-slate-500">0 Deals</span>
         </div>
         <div class="flex items-baseline justify-between mt-0.5">
@@ -275,7 +555,14 @@
           <div id="bar-daily-progress" class="bg-gradient-to-r from-amber-500 to-emerald-500 h-full w-0 transition-all duration-500"></div>
         </div>
         <div class="text-[10px] text-slate-400 dark:text-slate-500 mt-1.5 pt-1 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center">
-          <span>Done: <span id="txt-daily-pct" class="font-bold text-slate-700 dark:text-slate-300">0%</span></span>
+          <span class="has-tooltip inline-flex items-center">
+            <span>Done: <span id="txt-daily-pct" class="font-bold text-slate-700 dark:text-slate-300">0%</span></span>
+            <span class="tip-icon">i</span>
+            <span class="tooltip-box tip-right">
+              <strong class="block text-amber-400 font-semibold mb-0.5">Goal Completion %</strong>
+              Percentage progress toward today's configured daily profit goal.
+            </span>
+          </span>
           <span id="txt-goal-status" class="text-slate-400 dark:text-slate-500 truncate max-w-[70px]">In progress</span>
         </div>
       </div>
@@ -297,8 +584,22 @@
             <span id="dot-entry-radar" class="w-3 h-3 rounded-full bg-slate-400 flex-shrink-0"></span>
             <div class="min-w-0">
               <div class="flex items-center space-x-2">
-                <span class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">Entry Radar</span>
-                <span id="badge-entry-mode" class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">BOTH</span>
+                <span class="has-tooltip inline-flex items-center">
+                  <span class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">Entry Radar</span>
+                  <span class="tip-icon">i</span>
+                  <span class="tooltip-box tip-left">
+                    <strong class="block text-amber-400 font-semibold mb-0.5">Real-Time Signal Telemetry</strong>
+                    Continuously monitors price distance to MA-250, dip/rally pullback zones, and RSI bounds to signal the next entry.
+                  </span>
+                </span>
+                <span class="has-tooltip inline-flex items-center">
+                  <span id="badge-entry-mode" class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">BOTH</span>
+                  <span class="tip-icon">i</span>
+                  <span class="tooltip-box">
+                    <strong class="block text-amber-400 font-semibold mb-0.5">Direction Bias Mode</strong>
+                    BOTH (executes both buys and sells), BUY ONLY (bullish bias), or SELL ONLY (bearish bias).
+                  </span>
+                </span>
               </div>
               <div id="txt-entry-headline" class="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200">
                 Calculating entry conditions...
@@ -309,24 +610,59 @@
           <!-- Right: Telemetry Metrics -->
           <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5 sm:gap-x-5 text-xs">
             <div class="flex items-center space-x-1.5">
-              <span class="text-slate-400 dark:text-slate-500">Current MA:</span>
+              <span class="has-tooltip inline-flex items-center">
+                <span class="text-slate-400 dark:text-slate-500">Current MA:</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">250-Period Moving Average</strong>
+                  Live 250 Simple Moving Average calculated across 1-minute bars.
+                </span>
+              </span>
               <span id="radar-ma" class="font-mono font-bold text-slate-800 dark:text-slate-200">---</span>
             </div>
             <div class="flex items-center space-x-1.5">
-              <span class="text-slate-400 dark:text-slate-500">Distance:</span>
+              <span class="has-tooltip inline-flex items-center">
+                <span class="text-slate-400 dark:text-slate-500">Distance:</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Distance from MA</strong>
+                  Current dollar distance from MA-250 (|Price - MA|). Turns red if it exceeds the max allowed distance.
+                </span>
+              </span>
               <span id="radar-dist" class="font-mono font-bold text-slate-800 dark:text-slate-200">---</span>
             </div>
             <div class="flex items-center space-x-1.5">
-              <span class="text-slate-400 dark:text-slate-500">Max MA Dist:</span>
+              <span class="has-tooltip inline-flex items-center">
+                <span class="text-slate-400 dark:text-slate-500">Max MA Dist:</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Overextension Limit</strong>
+                  Configured max distance limit (max_ma_dist). If price stretches beyond this threshold, new entries are blocked.
+                </span>
+              </span>
               <span id="radar-max-dist" class="font-mono font-bold text-amber-600 dark:text-amber-400">---</span>
             </div>
             <div class="flex items-center space-x-1.5">
-              <span class="text-slate-400 dark:text-slate-500">RSI-14:</span>
+              <span class="has-tooltip inline-flex items-center">
+                <span class="text-slate-400 dark:text-slate-500">RSI-14:</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-right">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">RSI Status Filter</strong>
+                  NORMAL (30-70 safe entry window). OVERBOUGHT (&ge; 70, Buy blocked). OVERSOLD (&le; 30, Sell blocked).
+                </span>
+              </span>
               <span id="radar-rsi-val" class="font-mono font-bold text-slate-800 dark:text-slate-200">50.0</span>
               <span id="radar-rsi-badge" class="px-1.5 py-0.2 rounded text-[10px] font-extrabold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">NORMAL</span>
             </div>
             <div class="flex items-center space-x-2 bg-slate-50 dark:bg-slate-800/80 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
-              <span id="radar-waiting-label" class="text-slate-500 dark:text-slate-400 font-medium whitespace-nowrap">Waiting For Price:</span>
+              <span class="has-tooltip inline-flex items-center">
+                <span id="radar-waiting-label" class="text-slate-500 dark:text-slate-400 font-medium whitespace-nowrap">Waiting For Price:</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-right">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Live Trigger Condition</strong>
+                  Required price level and bounce confirmation needed for the strategy engine to place an order.
+                </span>
+              </span>
               <span id="radar-waiting-for" class="font-mono font-extrabold text-emerald-600 dark:text-emerald-400">---</span>
             </div>
           </div>
@@ -349,13 +685,36 @@
         <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm lg:col-span-2 flex flex-col transition-colors">
           <div class="flex items-center justify-between mb-3">
             <div class="flex items-center space-x-2">
-              <span class="text-base font-bold text-slate-900 dark:text-white">Session P&L Trajectory</span>
+              <span class="has-tooltip inline-flex items-center">
+                <span class="text-base font-bold text-slate-900 dark:text-white">Session P&L Trajectory</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-left">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Session Performance Curve</strong>
+                  Real-time equity and floating basket profit/loss tracked at 1-minute intervals over the last 2 hours.
+                </span>
+              </span>
               <span id="badge-chart-status" class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700">PAUSED (BOT IDLE)</span>
             </div>
-            <div class="text-xs font-mono text-slate-500 dark:text-slate-400">
-              Equity: <span id="txt-equity" class="text-emerald-600 dark:text-emerald-400 font-bold">$0.00</span>
-              <span class="text-slate-300 dark:text-slate-700 mx-1">&bull;</span>
-              Free Margin: <span id="txt-free-margin" class="text-amber-600 dark:text-amber-400 font-bold">$0.00</span>
+            <div class="text-xs font-mono text-slate-500 dark:text-slate-400 flex items-center">
+              <span class="has-tooltip inline-flex items-center">
+                <span>Equity:</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Account Equity</strong>
+                  Account balance plus current net unrealized floating profit/loss across all positions.
+                </span>
+              </span>
+              <span id="txt-equity" class="text-emerald-600 dark:text-emerald-400 font-bold ml-1">$0.00</span>
+              <span class="text-slate-300 dark:text-slate-700 mx-1.5">&bull;</span>
+              <span class="has-tooltip inline-flex items-center">
+                <span>Free Margin:</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-right">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Available Free Margin</strong>
+                  Capital currently available to open new positions or withstand adverse market price fluctuations.
+                </span>
+              </span>
+              <span id="txt-free-margin" class="text-amber-600 dark:text-amber-400 font-bold ml-1">$0.00</span>
             </div>
           </div>
           <div class="relative flex-1 min-h-[220px] sm:min-h-[240px] w-full">
@@ -379,10 +738,15 @@
               </button>
             </div>
 
-            <span class="text-xs text-slate-400 dark:text-slate-500 flex items-center space-x-1.5 font-mono">
+            <span class="has-tooltip inline-flex items-center text-xs text-slate-400 dark:text-slate-500 font-mono">
               <span><span class="px-1 py-0.2 rounded text-[9px] font-extrabold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">B</span> Bot</span>
-              <span>&bull;</span>
+              <span class="mx-1">&bull;</span>
               <span><span class="px-1 py-0.2 rounded text-[9px] font-extrabold bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30">U</span> User</span>
+              <span class="tip-icon">i</span>
+              <span class="tooltip-box tip-right">
+                <strong class="block text-amber-400 font-semibold mb-0.5">Order Origin Tags</strong>
+                'B' indicates automated bot trades (magic 123790 or recovery 789998). 'U' indicates manual trades opened by you in MT5.
+              </span>
             </span>
           </div>
 
@@ -391,10 +755,46 @@
             <table class="w-full text-left text-xs">
               <thead class="text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 sticky top-0 border-b border-slate-200 dark:border-slate-800">
                 <tr>
-                  <th class="p-2 font-medium">Type</th>
-                  <th class="p-2 font-medium">Lots</th>
-                  <th class="p-2 font-medium">Entry Price &amp; Time</th>
-                  <th class="p-2 font-medium text-right">P&L ($)</th>
+                  <th class="p-2 font-medium">
+                    <span class="has-tooltip inline-flex items-center">
+                      <span>Type</span>
+                      <span class="tip-icon">i</span>
+                      <span class="tooltip-box tip-left">
+                        <strong class="block text-amber-400 font-semibold mb-0.5">Order Direction &amp; Origin</strong>
+                        BUY or SELL trade along with origin tag (<strong>B</strong> for Bot automated, <strong>U</strong> for manual User order).
+                      </span>
+                    </span>
+                  </th>
+                  <th class="p-2 font-medium">
+                    <span class="has-tooltip inline-flex items-center">
+                      <span>Lots</span>
+                      <span class="tip-icon">i</span>
+                      <span class="tooltip-box tip-left">
+                        <strong class="block text-amber-400 font-semibold mb-0.5">Position Volume</strong>
+                        Contract size executed in standard lots (e.g. 0.01 micro lot = 1 troy oz of Gold).
+                      </span>
+                    </span>
+                  </th>
+                  <th class="p-2 font-medium">
+                    <span class="has-tooltip inline-flex items-center">
+                      <span>Entry Price &amp; Time</span>
+                      <span class="tip-icon">i</span>
+                      <span class="tooltip-box tip-left">
+                        <strong class="block text-amber-400 font-semibold mb-0.5">Execution Timestamp &amp; Price</strong>
+                        Fill price and precise execution time displayed in local Indian Standard Time (IST), with MT5 server time below.
+                      </span>
+                    </span>
+                  </th>
+                  <th class="p-2 font-medium text-right">
+                    <span class="has-tooltip inline-flex items-center justify-end">
+                      <span>P&amp;L ($)</span>
+                      <span class="tip-icon">i</span>
+                      <span class="tooltip-box tip-right">
+                        <strong class="block text-amber-400 font-semibold mb-0.5">Floating Profit / Loss</strong>
+                        Real-time mark-to-market unrealized profit or loss calculated against live tick price.
+                      </span>
+                    </span>
+                  </th>
                 </tr>
               </thead>
               <tbody id="tbl-positions" class="divide-y divide-slate-100 dark:divide-slate-800/60 font-mono">
@@ -410,10 +810,46 @@
             <table class="w-full text-left text-xs">
               <thead class="text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 sticky top-0 border-b border-slate-200 dark:border-slate-800">
                 <tr>
-                  <th class="p-2 font-medium">Type</th>
-                  <th class="p-2 font-medium">Lots</th>
-                  <th class="p-2 font-medium">Price &amp; Timing (In &rarr; Out)</th>
-                  <th class="p-2 font-medium text-right">Profit ($)</th>
+                  <th class="p-2 font-medium">
+                    <span class="has-tooltip inline-flex items-center">
+                      <span>Type</span>
+                      <span class="tip-icon">i</span>
+                      <span class="tooltip-box tip-left">
+                        <strong class="block text-amber-400 font-semibold mb-0.5">Closed Order Direction</strong>
+                        BUY or SELL position that has been fully closed.
+                      </span>
+                    </span>
+                  </th>
+                  <th class="p-2 font-medium">
+                    <span class="has-tooltip inline-flex items-center">
+                      <span>Lots</span>
+                      <span class="tip-icon">i</span>
+                      <span class="tooltip-box tip-left">
+                        <strong class="block text-amber-400 font-semibold mb-0.5">Closed Volume</strong>
+                        Volume of the closed deal in standard lots.
+                      </span>
+                    </span>
+                  </th>
+                  <th class="p-2 font-medium">
+                    <span class="has-tooltip inline-flex items-center">
+                      <span>Price &amp; Timing (In &rarr; Out)</span>
+                      <span class="tip-icon">i</span>
+                      <span class="tooltip-box tip-left">
+                        <strong class="block text-amber-400 font-semibold mb-0.5">Round-Trip Lifecycle</strong>
+                        Opening entry price &amp; timing compared against exit price &amp; timing in local Indian Standard Time (IST), with original MT5 broker server times listed underneath.
+                      </span>
+                    </span>
+                  </th>
+                  <th class="p-2 font-medium text-right">
+                    <span class="has-tooltip inline-flex items-center justify-end">
+                      <span>Profit ($)</span>
+                      <span class="tip-icon">i</span>
+                      <span class="tooltip-box tip-right">
+                        <strong class="block text-amber-400 font-semibold mb-0.5">Realized Net Profit</strong>
+                        Final net closed profit or loss deposited into your account balance after commission and swaps.
+                      </span>
+                    </span>
+                  </th>
                 </tr>
               </thead>
               <tbody id="tbl-closed-positions" class="divide-y divide-slate-100 dark:divide-slate-800/60 font-mono">
@@ -434,7 +870,14 @@
       <div class="flex items-center justify-between mb-2 px-1">
         <div class="flex items-center space-x-2">
           <span class="w-2 h-2 rounded-full bg-amber-500"></span>
-          <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Decision Log &amp; Strategy Event Stream</h2>
+          <span class="has-tooltip inline-flex items-center">
+            <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Decision Log &amp; Strategy Event Stream</h2>
+            <span class="tip-icon">i</span>
+            <span class="tooltip-box tip-left">
+              <strong class="block text-amber-400 font-semibold mb-0.5">Real-Time Event Audit</strong>
+              Live telemetry logging every internal algorithm calculation, MA distance check, spread guard, and order signal.
+            </span>
+          </span>
         </div>
         <span class="text-[11px] text-slate-400 dark:text-slate-500 font-mono">Real-Time Audit &bull; CSV Diagnostic Feed</span>
       </div>
@@ -474,7 +917,14 @@
         <div class="overflow-y-auto pr-1 sm:pr-2 space-y-4 flex-1 min-h-0">
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-xs">
             <div>
-              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Trading Symbol</label>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+                <span>Trading Symbol</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-left">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Trading Asset</strong>
+                  Select financial instrument. Syncs contract sizing, tick values, and moving averages.
+                </span>
+              </label>
               <input type="text" id="cfg-symbol" list="symbol-datalist" placeholder="e.g. EURUSD, GBPUSD, XAUUSD" oninput="calculateLiveMargin()" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white font-mono uppercase focus:ring-2 focus:ring-amber-500 outline-none">
               <datalist id="symbol-datalist">
                 <option value="XAUUSD">
@@ -490,7 +940,14 @@
               </datalist>
             </div>
             <div>
-              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Direction Bias</label>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+                <span>Direction Bias</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-right">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Direction Bias</strong>
+                  Trade both sides or enforce trend alignment (Buy Only in uptrend, Sell Only in downtrend).
+                </span>
+              </label>
               <select id="cfg-side" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white font-medium">
                 <option value="both">Both (Buy &amp; Sell)</option>
                 <option value="buy">Buy Only (Bullish)</option>
@@ -498,23 +955,51 @@
               </select>
             </div>
             <div>
-              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Entry Strategy</label>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+                <span>Entry Strategy</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-left">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Pullback vs Classic</strong>
+                  Pullback mode buys dips and sells rallies with bounce confirmation. Classic enters directly on raw MA crosses.
+                </span>
+              </label>
               <select id="cfg-entry_mode" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white font-medium">
                 <option value="pullback">Pullback Rejection (Smart — Buys Dips, Sells Rallies)</option>
                 <option value="classic">Classic (Aggressive — Enters on raw MA level)</option>
               </select>
             </div>
             <div>
-              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Pullback Zone Near MA ($)</label>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+                <span>Pullback Zone Near MA ($)</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-left">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Pullback Zone Width</strong>
+                  Max distance from MA defining the dip/rally staging zone (default $3.00).
+                </span>
+              </label>
               <input type="number" step="0.5" id="cfg-pullback_zone" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="default 3.00">
             </div>
             <div>
-              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Rejection Confirmation ($)</label>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+                <span>Rejection Confirmation ($)</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-right">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Bounce Distance</strong>
+                  Required price bounce from trough/crest before order fires (prevents catching falling knives).
+                </span>
+              </label>
               <input type="number" step="0.1" id="cfg-pullback_rejection_dist" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="default 0.60">
             </div>
             <div class="sm:col-span-2">
               <div class="flex items-center justify-between mb-1">
-                <label class="text-slate-700 dark:text-slate-300 font-medium">Lot Size</label>
+                <label class="text-slate-700 dark:text-slate-300 font-medium has-tooltip">
+                  <span>Lot Size</span>
+                  <span class="tip-icon">i</span>
+                  <span class="tooltip-box tip-left">
+                    <strong class="block text-amber-400 font-semibold mb-0.5">Base Trade Volume</strong>
+                    Position size in lots (0.01 = micro lot = 1 oz Gold / 1,000 currency units).
+                  </span>
+                </label>
                 <span id="cfg-lots-badge" class="text-[11px] font-semibold"></span>
               </div>
               <input type="number" step="0.01" id="cfg-lots" oninput="calculateLiveMargin()" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
@@ -522,93 +1007,222 @@
             </div>
 
             <div>
-              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Daily Profit Goal ($)</label>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+                <span>Daily Profit Goal ($)</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-left">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Daily Profit Target</strong>
+                  Cumulative target profit for the day. Trading automatically stops when achieved.
+                </span>
+              </label>
               <input type="number" step="1.0" id="cfg-daily_goal" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
             </div>
             <div>
-              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">MA Period</label>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+                <span>MA Period</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-right">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Moving Average Period</strong>
+                  Number of completed 1-minute bars used to calculate the trend baseline (default 250).
+                </span>
+              </label>
               <input type="number" id="cfg-ma_period" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
             </div>
 
             <div>
-              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Grid Max Legs</label>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+                <span>Grid Max Legs</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-left">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Max Grid Positions</strong>
+                  Maximum number of concurrent averaging positions the bot can open before capping risk.
+                </span>
+              </label>
               <input type="number" id="cfg-grid_max_legs" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
             </div>
             <div>
-              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Grid Step Loss ($)</label>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+                <span>Grid Step Loss ($)</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-right">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Grid Spacing Interval</strong>
+                  Adverse dollar move required before the next averaging leg is added to the basket.
+                </span>
+              </label>
               <input type="number" step="0.5" id="cfg-grid_step_loss" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
             </div>
 
             <div>
-              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Trail Arm ($)</label>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+                <span>Trail Arm ($)</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-left">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Trailing Activation Gate</strong>
+                  Minimum floating basket profit required before trailing stop activates (default $1.00).
+                </span>
+              </label>
               <input type="number" step="0.1" id="cfg-trail_arm" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
             </div>
             <div>
-              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Trail Giveback Frac</label>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+                <span>Trail Giveback Frac</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-right">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Trailing Buffer Fraction</strong>
+                  Fraction of peak profit surrendered to absorb normal market pullbacks without getting shaken out prematurely.
+                </span>
+              </label>
               <input type="number" step="0.05" id="cfg-trail_give_frac" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
             </div>
 
             <div>
-              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Soft Cap (Minutes)</label>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+                <span>Soft Cap (Minutes)</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-left">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Time-Based Exit</strong>
+                  If a trade has been open longer than this duration and is at least breaking even, it liquidates to free margin.
+                </span>
+              </label>
               <input type="number" id="cfg-soft_cap_min" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
             </div>
             <div>
-              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Emergency Grid SL ($)</label>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+                <span>Emergency Grid SL ($)</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-right">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Emergency Hard Cutoff</strong>
+                  Hard dollar stop loss. Closes all open basket legs immediately if total basket loss hits this limit.
+                </span>
+              </label>
               <input type="number" step="1.0" id="cfg-grid_sl" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white">
             </div>
 
             <div>
-              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Max Spread Guard ($)</label>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+                <span>Max Spread Guard ($)</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-left">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Spread Guard</strong>
+                  Blocks orders if broker spread exceeds this threshold (e.g. during volatile news spikes or session rollovers).
+                </span>
+              </label>
               <input type="number" step="0.1" id="cfg-max_spread" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="e.g. 1.0 (0=Off)">
             </div>
             <div>
-              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Min Cooldown Gap (Sec)</label>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+                <span>Min Cooldown Gap (Sec)</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-right">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Anti-Chop Cooldown</strong>
+                  Mandatory wait time in seconds following a position close before a new entry is allowed.
+                </span>
+              </label>
               <input type="number" step="1" id="cfg-min_entry_gap_sec" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="default 15">
             </div>
 
             <div>
-              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Max MA Distance Guard ($)</label>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+                <span>Max MA Distance Guard ($)</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-left">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Overextension Barrier</strong>
+                  Blocks trades if price is stretched further than this distance from MA, preventing buying tops or selling bottoms.
+                </span>
+              </label>
               <input type="number" step="0.5" id="cfg-max_ma_dist" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="e.g. 2.50 (0=Off)">
             </div>
             <div class="flex items-center pt-2 sm:pt-5">
-              <label class="flex items-center space-x-2 cursor-pointer select-none">
+              <label class="flex items-center space-x-2 cursor-pointer select-none has-tooltip">
                 <input type="checkbox" id="cfg-rsi_filter" class="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700">
-                <span class="text-slate-700 dark:text-slate-300 font-medium">RSI Climax Guard (Block Buy &gt; 70, Sell &lt; 30)</span>
+                <span class="text-slate-700 dark:text-slate-300 font-medium">RSI Climax Guard</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-right">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">RSI Climax Filter</strong>
+                  Blocks BUY when RSI &ge; 70 and blocks SELL when RSI &le; 30 to prevent entering exhausted exhaustion moves.
+                </span>
               </label>
             </div>
             <div>
-              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Min Free Margin Guard ($)</label>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+                <span>Min Free Margin Guard ($)</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-left">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Free Margin Floor</strong>
+                  Blocks orders if available free margin is below this dollar amount (prevents margin calls).
+                </span>
+              </label>
               <input type="number" step="1.0" id="cfg-min_free_margin" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="default 10.0">
             </div>
             <div>
-              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Min Margin Level Guard (%)</label>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+                <span>Min Margin Level Guard (%)</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-right">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Margin Level Percentage</strong>
+                  Blocks orders if account margin level falls below this percentage threshold.
+                </span>
+              </label>
               <input type="number" step="10.0" id="cfg-min_margin_level" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="default 200.0">
             </div>
 
             <div>
-              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Trend Invalidation Stop ($)</label>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+                <span>Trend Invalidation Stop ($)</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-left">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Trend Invalidation Cut</strong>
+                  Emergency cut that liquidates open positions if market price reverses across the MA against your trade.
+                </span>
+              </label>
               <input type="number" step="0.5" id="cfg-trend_stop_dist" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="e.g. 6.00 (0=Off)">
             </div>
             <div>
-              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Max Equity Risk SL (%)</label>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+                <span>Max Equity Risk SL (%)</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-right">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Equity Risk Ceiling</strong>
+                  Hard stop that cuts the open basket if loss exceeds this percentage of total account equity.
+                </span>
+              </label>
               <input type="number" step="1.0" id="cfg-max_equity_risk_pct" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="e.g. 20.0 (0=Off)">
             </div>
 
             <div>
-              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Hard Time Cap (Hours)</label>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+                <span>Hard Time Cap (Hours)</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-left">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Max Lifetime Ceiling</strong>
+                  Absolute cutoff for any open basket in hours. If a basket exceeds this lifetime, the bot forces an immediate liquidation regardless of P&amp;L to prevent indefinite swap bleed and margin lockup.
+                </span>
+              </label>
               <input type="number" step="0.5" id="cfg-hard_cap_hours" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="e.g. 2.0 (0=Off)">
             </div>
             <div>
-              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Bailout Target Profit ($)</label>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+                <span>Bailout Target Profit ($)</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-right">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Emergency Exit Profit</strong>
+                  When max legs are reached and Max-Legs Bailout is active, the bot drops the target basket profit to this small amount (e.g. $0.05) to exit at scratch/break-even on the first minor retrace.
+                </span>
+              </label>
               <input type="number" step="0.01" id="cfg-bailout_target" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="default 0.05">
             </div>
 
             <div class="col-span-1 sm:col-span-2 pt-1 sm:pt-2">
               <label class="flex items-center space-x-2 cursor-pointer select-none">
                 <input type="checkbox" id="cfg-bailout_on_max_legs" class="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700">
-                <span class="text-slate-700 dark:text-slate-300 font-bold flex items-center space-x-1">
+                <span class="text-slate-700 dark:text-slate-300 font-bold flex items-center space-x-1.5 has-tooltip">
                   <span>🎯</span>
                   <span>Max-Legs Bailout: Target Break-Even / Scratch when grid maxes out (Avoids Grid Trap)</span>
+                  <span class="tip-icon" onclick="event.stopPropagation()">i</span>
+                  <span class="tooltip-box tip-left">
+                    <strong class="block text-amber-400 font-semibold mb-0.5">Grid Trap Prevention</strong>
+                    When all allowable grid legs are filled, automatically reduces the basket profit target to the bailout target ($0.05) so the entire stack exits safely at break-even during the next slight market pullback.
+                  </span>
                 </span>
               </label>
             </div>
@@ -616,28 +1230,52 @@
             <div class="col-span-1 sm:col-span-2 pt-1 sm:pt-2">
               <label class="flex items-center space-x-2 cursor-pointer select-none">
                 <input type="checkbox" id="cfg-loss_recycler" class="w-4 h-4 rounded text-emerald-500 focus:ring-emerald-400 bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700">
-                <span class="text-slate-700 dark:text-slate-300 font-bold flex items-center space-x-1">
+                <span class="text-slate-700 dark:text-slate-300 font-bold flex items-center space-x-1.5 has-tooltip">
                   <span>🔄</span>
                   <span>Loss Recycler: Scalp bounces at max legs &amp; prune worst losing orders</span>
+                  <span class="tip-icon" onclick="event.stopPropagation()">i</span>
+                  <span class="tooltip-box tip-left">
+                    <strong class="block text-emerald-400 font-semibold mb-0.5">Dynamic Order Pruner</strong>
+                    When stuck at max grid capacity, opens temporary micro-scalp positions on small counter-reversals. Profits from these scalps are systematically used to close out the oldest and deepest underwater grid leg, freeing margin without waiting for a full reversal.
+                  </span>
                 </span>
               </label>
             </div>
 
             <div>
-              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Recycler Scalp TP ($)</label>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+                <span>Recycler Scalp TP ($)</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-left">
+                  <strong class="block text-emerald-400 font-semibold mb-0.5">Recycler Profit Target</strong>
+                  Profit threshold in dollars for the temporary scalp leg taken by the Loss Recycler before locking gains to prune an underwater leg.
+                </span>
+              </label>
               <input type="number" step="0.1" id="cfg-recycle_tp" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="default 1.50">
             </div>
             <div>
-              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Recycler Scalp SL ($)</label>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+                <span>Recycler Scalp SL ($)</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-right">
+                  <strong class="block text-emerald-400 font-semibold mb-0.5">Recycler Safety Cut</strong>
+                  Stop loss in dollars on the temporary scalp leg to ensure an adverse trend breakout doesn't add compounding drawdown.
+                </span>
+              </label>
               <input type="number" step="0.1" id="cfg-recycle_sl" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="default 1.50">
             </div>
 
             <div class="col-span-1 sm:col-span-2 pt-1 sm:pt-2">
               <label class="flex items-center space-x-2 cursor-pointer select-none">
                 <input type="checkbox" id="cfg-break_time" class="w-4 h-4 rounded text-amber-500 focus:ring-amber-400 bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700">
-                <span class="text-amber-600 dark:text-amber-400 font-bold flex items-center space-x-1">
+                <span class="text-amber-600 dark:text-amber-400 font-bold flex items-center space-x-1.5 has-tooltip">
                   <span>☕</span>
                   <span>Break Time (Finish open trades &amp; exit safely, but block new entries)</span>
+                  <span class="tip-icon" onclick="event.stopPropagation()">i</span>
+                  <span class="tooltip-box tip-left">
+                    <strong class="block text-amber-400 font-semibold mb-0.5">Graceful Pause</strong>
+                    Allows all current positions to run their normal trailing profit and bailout logic to close cleanly, but immediately blocks opening any new initial positions. Ideal before news releases or end of day.
+                  </span>
                 </span>
               </label>
             </div>
@@ -677,12 +1315,26 @@
 
       <form id="form-login" onsubmit="submitMT5Login(event)" class="mt-4 space-y-3.5 text-xs">
         <div>
-          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">MT5 Account Number (Login)</label>
+          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+            <span>MT5 Account Number (Login)</span>
+            <span class="tip-icon">i</span>
+            <span class="tooltip-box tip-left">
+              <strong class="block text-amber-400 font-semibold mb-0.5">Account ID</strong>
+              Your MetaTrader 5 account login ID (numeric digits only).
+            </span>
+          </label>
           <input type="number" id="login-acc" required placeholder="e.g. 12345678" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white font-mono focus:ring-2 focus:ring-amber-500 outline-none">
         </div>
 
         <div>
-          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Trading Password</label>
+          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+            <span>Trading Password</span>
+            <span class="tip-icon">i</span>
+            <span class="tooltip-box tip-left">
+              <strong class="block text-amber-400 font-semibold mb-0.5">Master Trading Password</strong>
+              Master or investor password required by your broker to authenticate trading operations.
+            </span>
+          </label>
           <div class="relative">
             <input type="password" id="login-pass" required placeholder="••••••••••••" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 pr-10 text-slate-900 dark:text-white font-mono focus:ring-2 focus:ring-amber-500 outline-none">
             <button type="button" onclick="togglePassVisibility()" class="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 dark:hover:text-white text-sm" title="Show/Hide Password">👁️</button>
@@ -690,13 +1342,27 @@
         </div>
 
         <div>
-          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1">Broker Server Name</label>
+          <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+            <span>Broker Server Name</span>
+            <span class="tip-icon">i</span>
+            <span class="tooltip-box tip-left">
+              <strong class="block text-amber-400 font-semibold mb-0.5">Broker Server Designation</strong>
+              Exact trading server name provided by your broker (e.g. VantageFX-Live, MetaQuotes-Demo).
+            </span>
+          </label>
           <input type="text" id="login-server" required placeholder="e.g. VantageFX-Live or Vantage-Demo" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white font-mono focus:ring-2 focus:ring-amber-500 outline-none">
           <p class="text-[11px] text-slate-400 dark:text-slate-500 mt-1">Found in MT5 via File &rarr; Login to Trade Account &rarr; Server.</p>
         </div>
 
         <details class="text-slate-500 dark:text-slate-400 pt-1">
-          <summary class="cursor-pointer text-[11px] font-medium hover:text-slate-700 dark:hover:text-slate-300">Advanced: MT5 Terminal Path</summary>
+          <summary class="cursor-pointer text-[11px] font-medium hover:text-slate-700 dark:hover:text-slate-300 has-tooltip inline-flex items-center">
+            <span>Advanced: MT5 Terminal Path</span>
+            <span class="tip-icon ml-1.5">i</span>
+            <span class="tooltip-box tip-left">
+              <strong class="block text-amber-400 font-semibold mb-0.5">Terminal Executable Path</strong>
+              Path to terminal64.exe on your Windows system. If left default, the system automatically finds standard installations.
+            </span>
+          </summary>
           <div class="mt-2">
             <input type="text" id="login-path" value="C:\Program Files\MetaTrader 5\terminal64.exe" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-[11px] text-slate-700 dark:text-slate-300 font-mono">
           </div>
@@ -849,25 +1515,19 @@
         }
       }
 
-      // Check if logged in
+      // Check if logged in (Never automatically prompt or block with login modal)
       const hasLogin = Boolean(s.logged_in && s.account && s.account.login);
-      const btnOpenLogin = document.getElementById('btn-open-login');
 
       if (!hasLogin) {
-        if (btnOpenLogin) btnOpenLogin.classList.remove('hidden');
         document.getElementById('badge-mt5').className = 'flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 text-amber-700 dark:text-amber-400 cursor-pointer';
         document.getElementById('dot-mt5').className = 'w-2.5 h-2.5 rounded-full bg-amber-500 pulse-dot';
-        document.getElementById('txt-mt5').innerText = 'No Active Login (Click to Connect)';
+        document.getElementById('txt-mt5').innerText = 'No MT5 Session';
         document.getElementById('badge-mt5').onclick = openLoginModal;
-
-        if (!loginPrompted) {
-          loginPrompted = true;
-          openLoginModal();
-        }
+        document.getElementById('txt-acc-num').innerText = '#---';
+        document.getElementById('txt-acc-type').innerText = 'OFFLINE';
+        document.getElementById('txt-acc-type').className = 'px-1.5 py-0.2 rounded text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-500 font-bold';
       } else {
-        if (btnOpenLogin) btnOpenLogin.classList.remove('hidden');
-        document.getElementById('badge-mt5').onclick = openLoginModal;
-
+        document.getElementById('badge-mt5').onclick = null;
         if (s.error_msg) {
           document.getElementById('dot-mt5').className = 'w-2.5 h-2.5 rounded-full bg-rose-500';
           document.getElementById('txt-mt5').innerText = 'MT5 Error';
@@ -879,14 +1539,18 @@
         }
       }
 
-      // Account Info
+      // Account Info & Switcher Pill
       if (s.account && s.account.login) {
-        document.getElementById('badge-acc').classList.remove('hidden');
-        document.getElementById('txt-acc-num').innerText = `#${s.account.login} (${s.account.server})`;
+        document.getElementById('txt-acc-num').innerText = `#${s.account.login}`;
         const isReal = s.account.trade_mode === 'REAL';
         const typeEl = document.getElementById('txt-acc-type');
-        typeEl.innerText = s.account.trade_mode;
-        typeEl.className = `px-1.5 py-0.5 rounded text-[10px] font-bold ${isReal ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30' : 'bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400'}`;
+        typeEl.innerText = isReal ? 'REAL' : 'DEMO';
+        typeEl.className = `px-1.5 py-0.2 rounded text-[10px] font-extrabold ${isReal ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30' : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'}`;
+
+        const balEl = document.getElementById('txt-acc-bal-pill');
+        if (balEl && s.account.balance !== undefined) {
+          balEl.innerText = `$${Number(s.account.balance).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        }
 
         document.getElementById('badge-algo').classList.remove('hidden');
         const algoEl = document.getElementById('txt-algo');
@@ -900,6 +1564,11 @@
         if (freeEl && s.account.free_margin !== undefined) {
           freeEl.innerText = `$${s.account.free_margin.toFixed(2)}`;
         }
+      }
+
+      // Render Accounts Dropdown
+      if (s.accounts) {
+        renderAccountsDropdown(s.accounts, s.account);
       }
 
       // Market Live / Closed Status
@@ -1239,6 +1908,7 @@
             : `<span class="px-1 py-0.5 rounded text-[9px] font-bold bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30" title="Opened by User / Manual">U</span>`;
 
           const openTimeStr = p.time_open || p.time || '---';
+          const openServerStr = p.time_open_server || '';
           const durationStr = p.duration ? `(${p.duration})` : '';
 
           html += `
@@ -1251,7 +1921,11 @@
               <td class="p-2 text-slate-700 dark:text-slate-300 font-mono">${p.volume}</td>
               <td class="p-2 text-slate-700 dark:text-slate-300">
                 <div class="font-bold font-mono">${p.price_open.toFixed(2)}</div>
-                <div class="text-[10px] text-slate-400 font-mono">In: ${openTimeStr} <span class="text-amber-600 dark:text-amber-400 font-sans">${durationStr}</span></div>
+                <div class="text-[10px] text-slate-400 font-mono flex items-center space-x-1.5 mt-0.5">
+                  <span>In: <span class="font-semibold text-slate-700 dark:text-slate-200">${openTimeStr}</span></span>
+                  <span class="text-amber-600 dark:text-amber-400 font-sans font-medium">${durationStr}</span>
+                </div>
+                ${openServerStr ? `<div class="text-[9px] text-slate-400 dark:text-slate-500 font-mono">MT5: ${openServerStr}</div>` : ''}
               </td>
               <td class="p-2 text-right font-bold font-mono ${pnlColor}">${p.profit >= 0 ? '+' : ''}${p.profit.toFixed(2)}</td>
             </tr>
@@ -1279,6 +1953,8 @@
 
           const inTimeStr = p.time_open || '---';
           const outTimeStr = p.time_close || p.time || '---';
+          const inServer = p.time_open_server || '';
+          const outServer = p.time_close_server || '';
           const durBadge = p.duration ? `<span class="px-1 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-[10px] text-slate-500 font-sans">${p.duration}</span>` : '';
 
           htmlClosed += `
@@ -1297,9 +1973,13 @@
                   ${durBadge}
                 </div>
                 <div class="text-[10px] text-slate-400 font-mono flex flex-col sm:flex-row sm:space-x-2 mt-0.5">
-                  <span>In: <span class="text-slate-600 dark:text-slate-300 font-semibold">${inTimeStr}</span></span>
-                  <span>Out: <span class="text-slate-600 dark:text-slate-300 font-semibold">${outTimeStr}</span></span>
+                  <span>In: <span class="text-slate-700 dark:text-slate-200 font-semibold">${inTimeStr}</span></span>
+                  <span>Out: <span class="text-slate-700 dark:text-slate-200 font-semibold">${outTimeStr}</span></span>
                 </div>
+                ${(inServer || outServer) ? `
+                <div class="text-[9px] text-slate-400 dark:text-slate-500 font-mono mt-0.5">
+                  MT5 Server: ${inServer.replace(' (Server)', '')} &rarr; ${outServer.replace(' (Server)', '')}
+                </div>` : ''}
               </td>
               <td class="p-2 text-right font-bold font-mono ${pnlColor}">${p.profit >= 0 ? '+' : ''}${p.profit.toFixed(2)}</td>
             </tr>
@@ -1382,8 +2062,138 @@
       }
     }
 
+    // Account Switcher Dropdown Helpers
+    function toggleAccountDropdown(e) {
+      if (e) e.stopPropagation();
+      const menu = document.getElementById('account-dropdown-menu');
+      const icon = document.getElementById('icon-acc-chevron');
+      if (menu) {
+        menu.classList.toggle('hidden');
+        if (icon) {
+          icon.style.transform = menu.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(180deg)';
+        }
+      }
+    }
+
+    // Close dropdown on outside click
+    document.addEventListener('click', function(e) {
+      const wrapper = document.getElementById('account-dropdown-wrapper');
+      const menu = document.getElementById('account-dropdown-menu');
+      const icon = document.getElementById('icon-acc-chevron');
+      if (wrapper && !wrapper.contains(e.target) && menu && !menu.classList.contains('hidden')) {
+        menu.classList.add('hidden');
+        if (icon) icon.style.transform = 'rotate(0deg)';
+      }
+    });
+
+    function renderAccountsDropdown(accounts, activeAccount) {
+      const container = document.getElementById('account-list-container');
+      if (!container) return;
+
+      if (!accounts || accounts.length === 0) {
+        container.innerHTML = `<div class="p-3 text-center text-slate-400 text-xs">No accounts detected.<br>Open MetaTrader 5 to auto-detect.</div>`;
+        return;
+      }
+
+      const activeLogin = (activeAccount && activeAccount.login) ? Number(activeAccount.login) : null;
+
+      container.innerHTML = accounts.map(a => {
+        const isActive = activeLogin === Number(a.login);
+        const isReal = a.trade_mode === 'REAL';
+        const modeBadge = isReal
+          ? '<span class="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/25">REAL</span>'
+          : '<span class="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">DEMO</span>';
+
+        const balText = (a.balance > 0) ? `$${Number(a.balance).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : (isActive ? 'Active' : 'Saved');
+
+        if (isActive) {
+          return `
+            <div class="p-2.5 rounded-xl border border-emerald-500/40 bg-emerald-50/70 dark:bg-emerald-500/10 flex items-center justify-between">
+              <div class="min-w-0 pr-2">
+                <div class="flex items-center space-x-1.5 font-mono font-bold text-slate-900 dark:text-white text-xs">
+                  <span class="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0"></span>
+                  <span>#${a.login}</span>
+                  ${modeBadge}
+                </div>
+                <div class="text-[11px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                  ${a.server} ${a.name ? `&bull; ${a.name}` : ''}
+                </div>
+              </div>
+              <div class="text-right flex-shrink-0">
+                <div class="font-mono font-bold text-emerald-600 dark:text-emerald-400 text-xs">${balText}</div>
+                <span class="text-[10px] font-extrabold uppercase text-emerald-600 dark:text-emerald-400 tracking-wider">ACTIVE ✓</span>
+              </div>
+            </div>
+          `;
+        } else {
+          return `
+            <div onclick="selectAccountToTrade(${a.login}, '${a.server}', ${Boolean(a.has_password)})" 
+                 class="p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-amber-500/50 hover:bg-slate-50 dark:hover:bg-slate-800/80 cursor-pointer transition flex items-center justify-between group">
+              <div class="min-w-0 pr-2">
+                <div class="flex items-center space-x-1.5 font-mono font-bold text-slate-800 dark:text-slate-200 text-xs group-hover:text-amber-600 dark:group-hover:text-amber-400">
+                  <span class="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600 flex-shrink-0"></span>
+                  <span>#${a.login}</span>
+                  ${modeBadge}
+                </div>
+                <div class="text-[11px] text-slate-400 dark:text-slate-500 truncate mt-0.5">
+                  ${a.server} ${a.name ? `&bull; ${a.name}` : ''}
+                </div>
+              </div>
+              <div class="text-right flex-shrink-0">
+                <button type="button" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-100 dark:bg-slate-800 group-hover:bg-amber-500 group-hover:text-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition">
+                  ${a.has_password ? 'Switch' : 'Connect'}
+                </button>
+              </div>
+            </div>
+          `;
+        }
+      }).join('');
+    }
+
+    async function selectAccountToTrade(login, server, hasPassword) {
+      if (isRunning) {
+        alert("Please STOP the bot before switching trading accounts to prevent orphan orders.");
+        return;
+      }
+
+      // Close dropdown
+      const menu = document.getElementById('account-dropdown-menu');
+      const icon = document.getElementById('icon-acc-chevron');
+      if (menu) menu.classList.add('hidden');
+      if (icon) icon.style.transform = 'rotate(0deg)';
+
+      if (hasPassword) {
+        showAlert(`Switching MT5 to Account #${login}...`);
+        try {
+          const resp = await fetch('/api/switch-account', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({login: login, server: server})
+          });
+          const res = await resp.json();
+          if (res.status === 'ok') {
+            showAlert(res.message);
+          } else {
+            alert(`Could not switch account: ${res.message}`);
+          }
+        } catch (e) {
+          alert(`Switch account error: ${e}`);
+        }
+      } else {
+        openLoginModal(login, server);
+      }
+    }
+
     // Modal Helpers: MT5 Login
-    function openLoginModal() {
+    function openLoginModal(prefLogin, prefServer) {
+      if (prefLogin && typeof prefLogin === 'number') {
+        const accInput = document.getElementById('login-acc');
+        if (accInput) accInput.value = prefLogin;
+      }
+      if (prefServer && typeof prefServer === 'string') {
+        const servInput = document.getElementById('login-server');
+        if (servInput) servInput.value = prefServer;
+      }
       document.getElementById('modal-login').classList.remove('hidden');
     }
     function closeLoginModal() {
@@ -1727,12 +2537,199 @@
     }
     function dismissAlert() { document.getElementById('box-alert').classList.add('hidden'); }
 
+    // ==========================================
+    // DYNAMIC COLLISION-AWARE GLOBAL TOOLTIP ENGINE
+    // ==========================================
+    let gTooltip = null;
+    let gTooltipContent = null;
+    let gTooltipArrow = null;
+    let currentTipTrigger = null;
+    let tipHideTimeout = null;
+
+    function initGlobalTooltipEngine() {
+      gTooltip = document.getElementById('global-tooltip');
+      gTooltipContent = document.getElementById('global-tooltip-content');
+      gTooltipArrow = document.getElementById('global-tooltip-arrow');
+
+      // Mouse delegation
+      document.addEventListener('mouseover', (e) => {
+        const trigger = e.target.closest('.tip-icon, .has-tooltip');
+        if (trigger) {
+          showGlobalTooltip(trigger);
+        }
+      });
+
+      document.addEventListener('mouseout', (e) => {
+        const trigger = e.target.closest('.tip-icon, .has-tooltip');
+        if (trigger) {
+          if (e.relatedTarget && trigger.contains(e.relatedTarget)) return;
+          hideGlobalTooltip();
+        }
+      });
+
+      // Touch device toggle support
+      document.addEventListener('touchstart', (e) => {
+        const trigger = e.target.closest('.tip-icon, .has-tooltip');
+        if (trigger) {
+          if (currentTipTrigger === trigger) {
+            hideGlobalTooltip();
+          } else {
+            showGlobalTooltip(trigger);
+          }
+        } else {
+          hideGlobalTooltip();
+        }
+      }, { passive: true });
+
+      // Cleanly hide on scroll/resize so tooltips never float detached
+      window.addEventListener('scroll', () => {
+        if (gTooltip && gTooltip.classList.contains('show')) {
+          hideGlobalTooltip(true);
+        }
+      }, { capture: true, passive: true });
+
+      window.addEventListener('resize', () => {
+        if (gTooltip && gTooltip.classList.contains('show')) {
+          hideGlobalTooltip(true);
+        }
+      }, { passive: true });
+    }
+
+    function showGlobalTooltip(targetEl) {
+      if (!gTooltip || !targetEl) return;
+
+      // Extract template content
+      let box = null;
+      if (targetEl.classList.contains('tip-icon')) {
+        box = targetEl.parentElement ? targetEl.parentElement.querySelector('.tooltip-box') : null;
+      } else if (targetEl.classList.contains('has-tooltip')) {
+        box = targetEl.querySelector('.tooltip-box');
+      } else {
+        const parent = targetEl.closest('.has-tooltip');
+        if (parent) box = parent.querySelector('.tooltip-box');
+      }
+
+      if (!box || !box.innerHTML.trim()) return;
+
+      currentTipTrigger = targetEl;
+      if (tipHideTimeout) {
+        clearTimeout(tipHideTimeout);
+        tipHideTimeout = null;
+      }
+
+      gTooltipContent.innerHTML = box.innerHTML;
+
+      // Unhide for dimension measurement
+      gTooltip.style.display = 'block';
+      gTooltip.classList.remove('show');
+      gTooltip.style.visibility = 'hidden';
+
+      // Anchor element: prefer .tip-icon if present for razor-sharp alignment
+      const anchorEl = targetEl.classList.contains('tip-icon')
+        ? targetEl
+        : (targetEl.querySelector('.tip-icon') || targetEl);
+
+      const rect = anchorEl.getBoundingClientRect();
+      const tipRect = gTooltip.getBoundingClientRect();
+      const tipW = tipRect.width;
+      const tipH = tipRect.height;
+
+      const winW = window.innerWidth;
+      const winH = window.innerHeight;
+      const margin = 12; // Safety margin from viewport edges
+      const gap = 8;     // Gap between anchor and tooltip box
+
+      // 1. Vertical Collision & Viewport Edge Detection
+      const spaceAbove = rect.top;
+      const spaceBelow = winH - rect.bottom;
+
+      let top = 0;
+      let placeAbove = true;
+
+      if (spaceAbove < tipH + gap + margin) {
+        // Not enough room above -> flip to BELOW
+        placeAbove = false;
+      } else if (spaceBelow >= tipH + gap + margin) {
+        // Fits comfortably above
+        placeAbove = true;
+      } else {
+        // Neither fits comfortably -> choose whichever side has more room
+        placeAbove = spaceAbove >= spaceBelow;
+      }
+
+      if (placeAbove) {
+        top = rect.top - tipH - gap;
+        gTooltip.className = 'global-tooltip arrow-down';
+      } else {
+        top = rect.bottom + gap;
+        gTooltip.className = 'global-tooltip arrow-up';
+      }
+
+      // Clamp vertical position strictly within screen bounds
+      if (top < margin) top = margin;
+      if (top + tipH > winH - margin) top = winH - tipH - margin;
+
+      // 2. Horizontal Collision & Viewport Edge Detection
+      const anchorCenterX = rect.left + rect.width / 2;
+      let left = anchorCenterX - tipW / 2;
+
+      // Clamp horizontally within viewport
+      if (left < margin) {
+        left = margin;
+      } else if (left + tipW > winW - margin) {
+        left = winW - tipW - margin;
+      }
+
+      // 3. Arrow Alignment with Anchor Center
+      let arrowLeft = anchorCenterX - left;
+      const minArrowPadding = 14; // Prevent arrow poking through rounded corners
+      arrowLeft = Math.max(minArrowPadding, Math.min(tipW - minArrowPadding, arrowLeft));
+
+      gTooltipArrow.style.left = Math.round(arrowLeft) + 'px';
+      gTooltipArrow.style.transform = 'translateX(-50%)';
+
+      // 4. Apply coordinates and reveal
+      gTooltip.style.top = Math.round(top) + 'px';
+      gTooltip.style.left = Math.round(left) + 'px';
+      gTooltip.style.visibility = 'visible';
+
+      requestAnimationFrame(() => {
+        if (currentTipTrigger === targetEl) {
+          gTooltip.classList.add('show');
+        }
+      });
+    }
+
+    function hideGlobalTooltip(instant = false) {
+      if (!gTooltip) return;
+      gTooltip.classList.remove('show');
+      if (instant) {
+        gTooltip.style.display = 'none';
+        gTooltip.style.visibility = 'hidden';
+        currentTipTrigger = null;
+        if (tipHideTimeout) clearTimeout(tipHideTimeout);
+        return;
+      }
+      tipHideTimeout = setTimeout(() => {
+        gTooltip.style.display = 'none';
+        gTooltip.style.visibility = 'hidden';
+        currentTipTrigger = null;
+      }, 120);
+    }
+
     // Init
     window.onload = () => {
       initTheme();
       initChart();
       connectWS();
+      initGlobalTooltipEngine();
     };
   </script>
+
+  <!-- DYNAMIC GLOBAL FLOATING TOOLTIP (PORTAL) -->
+  <div id="global-tooltip" class="global-tooltip" style="display: none;">
+    <div id="global-tooltip-content"></div>
+    <div id="global-tooltip-arrow" class="global-tooltip-arrow"></div>
+  </div>
 </body>
 </html>

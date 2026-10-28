@@ -238,6 +238,27 @@ Before sending any deal request to MT5:
 3. **Anti-Flood Throttling**:
    If an order is rejected or margin is insufficient, `margin_cooldown_until` locks new orders for 60 seconds, preventing broker account lockouts.
 
+### 3.9 Multi-Account Auto-Discovery & Dynamic Account Switcher
+* **Zero-Prompt Attachment**: If an MT5 terminal is already running on the host machine, the engine attaches directly to the active session via `mt5.initialize()`. Zero manual credentials or login popups are presented.
+* **Auto-Discovery**: Automatically discovers all accounts logged into or authorized on the MT5 terminal (`data_path/logs/*.log`) and combines them with `saved_accounts.json`.
+* **Live Synchronization**:
+  1. Switching accounts in the MT5 desktop GUI is detected in real time (< 0.5s) and immediately updates the web dashboard.
+  2. The interactive Account Switcher dropdown allows 1-click switching directly from the dashboard header without terminal restarts.
+
+### 3.10 Dynamic Global Tooltip Portal & Collision Edge Detection
+* **On-Demand Metric Guidance**: Hovering over any indicator's information icon (`ⓘ`) reveals a glassmorphic tooltip detailing its financial meaning, mathematical formula, and real-time strategic function.
+* **Global Portal Architecture**: Rather than nesting tooltips inside cards or tables where `overflow: hidden` or stacking contexts can clip or truncate them, tooltips are rendered via a single dynamic portal (`#global-tooltip`) mounted directly to `document.body` at `z-index: 999999`.
+* **Dynamic Collision & Edge Detection**:
+  - *Vertical Inversion*: Automatically detects viewport top boundaries; if an indicator (e.g. `TREND: BEARISH` in Card 1) is near the top of the screen, the tooltip automatically flips to display underneath with an upward-pointing arrow.
+  - *Horizontal Clamping*: Prevents right-edge and left-edge truncation on mobile or desktop viewports by clamping within a $12\text{px}$ screen margin.
+  - *Sliding Pointer Arrow*: Pinpoints the exact center of the `ⓘ` icon regardless of horizontal clamping.
+* **Universal Coverage**: Deployed across all 5 Primary Metric Cards, Section 2 Entry Radar, Section 3 Analytics & Table Headers (Open & Closed positions), Section 4 Decision Log, and all 29 configuration parameters in the Bot Settings modal.
+
+### 3.11 Dual Timezone Engine (Local IST & MT5 Broker Server Time)
+* **Desktop MT5 Behavior**: MetaTrader 5 desktop client natively displays broker server time (EET, typically UTC+2 in winter and UTC+3 in summer) across its charts, Market Watch, and Trade History. It does not provide an option to switch to local time (IST).
+* **Dual Time Display**: The dashboard automatically calculates the broker's UTC offset from live ticks and maps all deal timestamps to local **Indian Standard Time (IST, UTC+5:30)**.
+* **1:1 MT5 Cross-Referencing**: Beneath each IST timestamp in the Open and Closed Positions tables, the system displays the original MT5 Broker Server Time (`MT5 Server: HH:MM:SS`), allowing traders to cross-reference every trade ticket in the desktop MT5 client without mental math.
+
 ---
 
 ## 4. Complete Configuration Parameter Reference

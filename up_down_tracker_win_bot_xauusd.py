@@ -510,8 +510,9 @@ class MT5Broker:
     def __init__(s, cfg):
         import MetaTrader5 as mt5, numpy as np
         s.mt5, s.np, s.c = mt5, np, cfg
+        # Attach directly if an MT5 terminal session is already active, else use .env
         kw = mt5_env()
-        if not mt5.initialize(**kw):
+        if not mt5.initialize() and not mt5.initialize(**kw):
             # Prompt user interactively if running in terminal without active session
             if sys.stdin and hasattr(sys.stdin, "isatty") and sys.stdin.isatty():
                 print("\n" + "=" * 58)
