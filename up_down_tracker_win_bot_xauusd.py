@@ -20,7 +20,7 @@ NOTE --tf: the EA's MA used the timeframe of the chart it was attached to; pick 
 """
 import argparse, os, sys, time, datetime as dt
 from dataclasses import dataclass, fields
-from collections import namedtuple
+from collections import namedtuple, deque
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 Tick = namedtuple("Tick", "bid ask time msc")           # time = server epoch s (MQL TimeCurrent), msc = ms
@@ -28,6 +28,32 @@ Pos = namedtuple("Pos", "ticket dir profit swap time magic")   # dir +1 buy / -1
 
 
 # ============================== INPUTS (same names/defaults as the .mq5) ==============================
+def is_in_rollover_window(tc: int, server_offset: float = 2.0, start_ist: str = "02:15", end_ist: str = "03:30") -> bool:
+    """
+    Checks if current time falls within the high-spread broker rollover blackout window (IST).
+    Converts broker tick epoch timestamp to Indian Standard Time (IST, UTC+5:30).
+    """
+    if tc > 0:
+        dt_srv = dt.datetime.utcfromtimestamp(tc)
+        dt_utc = dt_srv - dt.timedelta(hours=server_offset)
+        dt_ist = dt_utc + dt.timedelta(hours=5, minutes=30)
+    else:
+        dt_ist = dt.datetime.now()
+
+    try:
+        s_parts = start_ist.strip().split(":")
+        e_parts = end_ist.strip().split(":")
+        s_min = int(s_parts[0]) * 60 + int(s_parts[1])
+        e_min = int(e_parts[0]) * 60 + int(e_parts[1])
+        c_min = dt_ist.hour * 60 + dt_ist.minute
+        if s_min <= e_min:
+            return s_min <= c_min < e_min
+        else:
+            return c_min >= s_min or c_min < e_min
+    except Exception:
+        return False
+
+
 @dataclass
 class Cfg:
     symbol: str = "XAUUSD"
@@ -52,8 +78,21 @@ class Cfg:
     grid_max_legs: int = 5
     grid_tp: float = 0.20
     grid_sl: float = 200.00
-    hard_cap_hours: float = 0
-    max_spread: float = 0.0
+    hard_cap_hours: float = 1.0
+    max_spread: float = 0.50             # Absolute max spread ($) allowed for entry (0 = disabled)
+    rollover_blackout: bool = True       # True: block new initial entries during broker rollover window
+    rollover_start_ist: str = "02:15"    # Rollover start time in IST (HH:MM)
+    rollover_end_ist: str = "03:30"      # Rollover end time in IST (HH:MM)
+    spread_spike_mult: float = 2.0       # Spread spike multiplier vs rolling baseline (0 = disabled)
+    max_atr: float = 0.0                 # Max ATR ($) allowed for new entry (0 = disabled)
+    atr_grid_scaling: bool = True        # Dynamically widen grid step during elevated ATR volatility
+    atr_grid_mult: float = 1.5           # Multiplier of ATR for grid step distance
+    htf_filter: bool = True              # Lever 3: Higher-timeframe macro trend filter (M5/M15)
+    htf_tf: str = "M5"                   # Timeframe for macro alignment ("M5" or "M15")
+    htf_ema_fast: int = 9                # Fast EMA period on HTF
+    htf_ema_slow: int = 21               # Slow EMA period on HTF
+    htf_neutral_band: float = 0.50       # Dollar band within which HTF is considered neutral
+    grid_bounce_req: float = 0.0        # Lever 3B: Min price bounce/rejection ($) before adding grid leg
     trail_on: bool = True
     trail_arm: float = 1.00
     trail_give_frac: float = 0.20
@@ -133,6 +172,13 @@ class Bot:
         s.dist_ma = 0.0; s.rsi = 50.0; s.margin_cooldown_until = 0; s.loss_cooldown_until = 0; s.last_order_error = ""; s.margin_reject_count = 0
         s.last_recycle_time = 0; s.recycle_extreme = 0.0
         s.pullback_crest = 0.0; s.pullback_trough = 0.0
+        s.spread_history = deque(maxlen=30)
+        s.atr = 0.0
+        s.htf_dir = 0
+        s.htf_fast = 0.0
+        s.htf_slow = 0.0
+        s.grid_trough = 0.0
+        s.grid_crest = 0.0
         s.events = []
 
     # ---- CSV decision log ----
@@ -172,6 +218,8 @@ class Bot:
         s.last_exit = tc                  # start the cooldown clock
         s.pullback_crest = 0.0
         s.pullback_trough = 0.0
+        s.grid_trough = 0.0
+        s.grid_crest = 0.0
         if loss_pause and s.c.loss_cooldown_sec > 0:
             s.loss_cooldown_until = tc + s.c.loss_cooldown_sec
             s.status = f"PAUSED AFTER LOSS {s.c.loss_cooldown_sec}s"
@@ -186,11 +234,16 @@ class Bot:
         if bid <= 0 or ask <= 0:
             s.status = "MARKET CLOSED / NO QUOTE"
             return
+        cur_spread = round(ask - bid, 2)
+        s.spread_history.append(cur_spread)
         m = s.br.ma()
         if m: s.ma = m
         if hasattr(s.br, "rsi"):
             rv = s.br.rsi(c.rsi_period)
             if rv is not None: s.rsi = rv
+        if hasattr(s.br, "htf_trend"):
+            td, hf, hs = s.br.htf_trend(c.htf_tf, c.htf_ema_fast, c.htf_ema_slow, c.htf_neutral_band)
+            s.htf_dir = td; s.htf_fast = hf; s.htf_slow = hs
         eq, mg = s.br.equity_margin(); s.exposure = (mg / eq * 100.0) if eq > 0 else 0.0
 
         # 1. SCAN POSITIONS (Separate grid stack from recovery scalps)
@@ -350,7 +403,17 @@ class Bot:
                 s.log("CLOSE", "-", "time-hard", bid, total, total); s.close_all(loss_pause=(total < 0)); return
             if (not c.trail_on) and s.nopen == 1 and total >= c.eff_target_profit:
                 s.log("CLOSE", "-", "scalp-tp", bid, total, total); s.close_all(); return
-            if s.nopen < c.grid_max_legs and total <= -(s.nopen * c.eff_grid_step_loss):
+            step = c.eff_grid_step_loss
+            if c.atr_grid_scaling:
+                tv, ts = s.br.tick_value_size()
+                atr = s.br.atr()
+                if ts > 0 and atr is not None and atr > 0:
+                    s.atr = float(atr)
+                    perUnit = (tv / ts) * c.lots
+                    atr_step = s.atr * c.atr_grid_mult * perUnit
+                    step = max(step, atr_step)
+
+            if s.nopen < c.grid_max_legs and total <= -(s.nopen * step):
                 if tc < s.margin_cooldown_until:
                     rem = s.margin_cooldown_until - tc
                     err_msg = f": {s.last_order_error}" if s.last_order_error else ""
@@ -359,11 +422,30 @@ class Bot:
                     else:
                         s.status = f"GRID WAIT MARGIN ({rem}s{err_msg})"
                     return
+                # Lever 3B: Anti-Averaging Grid Momentum Guard (Wait for price bounce/rejection before adding leg)
+                if c.grid_bounce_req > 0:
+                    if has_buy:
+                        if s.grid_trough == 0.0 or bid < s.grid_trough:
+                            s.grid_trough = bid
+                        bounce = bid - s.grid_trough
+                        if bounce < c.grid_bounce_req:
+                            s.status = f"GRID x{s.nopen} WAIT BOUNCE (+${bounce:.2f} < ${c.grid_bounce_req:.2f})"
+                            return
+                    elif has_sell:
+                        if s.grid_crest == 0.0 or ask > s.grid_crest:
+                            s.grid_crest = ask
+                        rejection = s.grid_crest - ask
+                        if rejection < c.grid_bounce_req:
+                            s.status = f"GRID x{s.nopen} WAIT REJECTION (-${rejection:.2f} < ${c.grid_bounce_req:.2f})"
+                            return
+
                 ok, rc = s.br.order(1 if has_buy else -1)
                 side = "BUY" if has_buy else "SELL"
                 if ok:
                     s.last_order_error = ""
                     s.margin_reject_count = 0
+                    s.grid_trough = 0.0
+                    s.grid_crest = 0.0
                     s.log("ENTRY", side, "grid-add", bid, total, 0.0)
                 else:
                     s.last_order_error = str(rc)
@@ -403,6 +485,10 @@ class Bot:
                 s.flip = 0
                 return
             if c.break_time: s.status = "☕ BREAK TIME (Tracking, no entries)"; s.flip = 0; return
+            if c.rollover_blackout and is_in_rollover_window(tc, c.server_offset, c.rollover_start_ist, c.rollover_end_ist):
+                s.status = f"🌙 ROLLOVER BLACKOUT ({c.rollover_start_ist}-{c.rollover_end_ist} IST)"
+                s.flip = 0
+                return
             if s.daily >= c.daily_goal: s.status = "GOAL REACHED"; s.flip = 0; return
             if s.flip != 0 and not s.allowed(s.flip): s.flip = 0
             if s.flip != 0:                               # one-shot reversal entry (no cooldown, no MA vote)
@@ -432,12 +518,28 @@ class Bot:
                 dist = abs(bid - s.ma)
                 s.dist_ma = dist
 
-                if c.max_spread > 0 and (ask - bid) > c.max_spread:
-                    s.status = f"SPREAD WIDE {ask - bid:.2f}"; return
+                # Spread Expansion Gates (Lever 2)
+                if c.max_spread > 0 and cur_spread > c.max_spread:
+                    s.status = f"SPREAD WIDE ${cur_spread:.2f} > ${c.max_spread:.2f}"; return
+
+                if c.spread_spike_mult > 0 and len(s.spread_history) >= 10:
+                    baseline = sum(s.spread_history) / len(s.spread_history)
+                    if cur_spread > baseline * c.spread_spike_mult and cur_spread > 0.40:
+                        s.status = f"SPREAD SPIKE ${cur_spread:.2f} > ${baseline * c.spread_spike_mult:.2f}"; return
+
+                # Volatility Climax Gate (Lever 2)
+                atr_val = s.br.atr()
+                if atr_val is not None and atr_val > 0:
+                    s.atr = float(atr_val)
+                    if c.max_atr > 0 and s.atr > c.max_atr:
+                        s.status = f"VOLATILITY CLIMAX (ATR ${s.atr:.2f} > ${c.max_atr:.2f})"; return
 
                 if c.entry_mode == "pullback":
                     # PULLBACK REJECTION ENGINE: Buys dips, sells rallies off MA
-                    macro_dir = 1 if bid >= s.ma else -1
+                    if c.htf_filter and s.htf_dir != 0:
+                        macro_dir = s.htf_dir
+                    else:
+                        macro_dir = 1 if bid >= s.ma else -1
                     if not s.allowed(macro_dir):
                         s.pullback_crest = s.pullback_trough = 0.0
                         s.status = f"WAIT {c.side.upper()}"
@@ -496,6 +598,15 @@ class Bot:
                         return
                     if d < 0 and s.rsi <= c.rsi_os:
                         s.status = f"RSI OVERSOLD ({s.rsi:.1f} <= {c.rsi_os:.0f})"
+                        return
+
+                # 3. Lever 3A: HTF Macro Trend Filter (M5 / M15)
+                if c.htf_filter and s.htf_dir != 0:
+                    if d > 0 and s.htf_dir < 0:
+                        s.status = f"WAIT HTF BULLISH ({c.htf_tf} Bearish)"
+                        return
+                    if d < 0 and s.htf_dir > 0:
+                        s.status = f"WAIT HTF BEARISH ({c.htf_tf} Bullish)"
                         return
 
                 if not s.allowed(d): s.status = f"WAIT {c.side.upper()}" + (f"/SLOPE{c.slope_bars}" if c.slope_bars else ""); return
@@ -649,6 +760,26 @@ class MT5Broker:
         rs = avg_g / avg_l
         return float(100.0 - (100.0 / (1.0 + rs)))
 
+    def htf_trend(s, tf_str="M5", fast=9, slow=21, neutral_band=0.50):
+        tf = s.mt5.TIMEFRAME_M5 if str(tf_str).upper() == "M5" else s.mt5.TIMEFRAME_M15
+        n_bars = max(slow + 25, 45)
+        r = s.mt5.copy_rates_from_pos(s.c.symbol, tf, 0, n_bars)
+        if r is None or len(r) < slow + 5:
+            return 0, 0.0, 0.0
+        closes = r["close"]
+        def calc_ema(arr, span):
+            alpha = 2.0 / (span + 1.0)
+            ema = arr[0]
+            for val in arr[1:]:
+                ema = ema * (1.0 - alpha) + val * alpha
+            return float(ema)
+        f_ema = calc_ema(closes, fast)
+        s_ema = calc_ema(closes, slow)
+        diff = f_ema - s_ema
+        if abs(diff) < neutral_band:
+            return 0, round(f_ema, 2), round(s_ema, 2)
+        return (1 if diff > 0 else -1), round(f_ema, 2), round(s_ema, 2)
+
     def tick_value_size(s):
         i = s.mt5.symbol_info(s.c.symbol)
         if i is None: return 1.0, 0.01
@@ -801,11 +932,13 @@ class FakeBroker:
     def __init__(s, cfg=None):
         s.c = cfg or Cfg()
         s.bid = 4000.0; s.spread = 0.3; s.t = 1_000_000; s.ma_v = 3990.0; s.pos = []; s.n = 0; s.fail = False; s.atr_v = 0.5; s.sleeps = 0; s.dp = 0.0; s.ma_ago_v = 3980.0; s.rsi_v = 50.0; s.margin_fail = False
+        s.htf_trend_v = 0; s.htf_fast_v = 4000.0; s.htf_slow_v = 4000.0
     def tick(s): return Tick(s.bid, s.bid + s.spread, s.t, s.t * 1000)
     def ma(s): return s.ma_v
     def ma_ago(s, k): return s.ma_ago_v
     def atr(s): return s.atr_v
     def rsi(s, period=14): return s.rsi_v
+    def htf_trend(s, tf_str="M5", fast=9, slow=21, neutral_band=0.50): return s.htf_trend_v, s.htf_fast_v, s.htf_slow_v
     def tick_value_size(s): return 1.0, 0.01
     def equity_margin(s): return 1000.0, 10.0
     def sleep(s, x): s.sleeps += 1
@@ -1069,6 +1202,75 @@ def selftest():
     r4 = bt_run(cfg1, 0.5, 0.0, 0.0)
     check("fixed-TP single-leg baskets all close at >= target (no slippage) and none lose before soft cap", all(b["pnl"] >= 0.4 - 1e-9 for b in r4["baskets"] if b["reason"] == "basket-target"))
     BT_DIR, _BTD = old_dir, old_d
+    # Lever 2: Dynamic ATR Volatility, Spread Expansion Gates & Rollover Blackout
+    # Rollover Blackout: blocks entry during rollover window (e.g. 02:40 IST = epoch 1793229000 at server_offset=2)
+    cfg, b, bot = mk(rollover_blackout=True, rollover_start_ist="02:15", rollover_end_ist="03:30", server_offset=2.0)
+    b.t = 1793229000; step(b, bot)
+    check("rollover blackout blocks entry during window", not b.pos and "ROLLOVER BLACKOUT" in bot.status)
+
+    # Rollover Blackout: allows entry outside window (e.g. 14:30 IST)
+    cfg, b, bot = mk(rollover_blackout=True, rollover_start_ist="02:15", rollover_end_ist="03:30", server_offset=2.0)
+    b.t = 1000000; step(b, bot)
+    check("rollover blackout allows entry outside window", len(b.pos) == 1)
+
+    # Spread Expansion Gate: absolute cap blocks entry
+    cfg, b, bot = mk(max_spread=0.50, rollover_blackout=False)
+    b.spread = 1.20; step(b, bot)
+    check("max_spread 0.50 blocks entry on 1.20 spread", not b.pos and "SPREAD WIDE" in bot.status)
+
+    # Spread Expansion Gate: relative spike multiplier blocks sudden widening
+    cfg, b, bot = mk(max_spread=2.00, spread_spike_mult=2.0, rollover_blackout=False, break_time=True)
+    for _ in range(12): b.spread = 0.25; step(b, bot)
+    cfg.break_time = False
+    b.spread = 0.75; step(b, bot) # 0.75 > 0.25 * 2.0 (0.50)
+    check("spread spike multiplier blocks entry on 3x spread expansion", not b.pos and "SPREAD SPIKE" in bot.status)
+
+    # Volatility Climax Gate: max_atr blocks entry during economic release hurricane
+    cfg, b, bot = mk(max_atr=5.00, rollover_blackout=False)
+    b.atr_v = 8.50; step(b, bot)
+    check("max_atr 5.0 blocks entry when ATR spikes to 8.5", not b.pos and "VOLATILITY CLIMAX" in bot.status)
+
+    # Dynamic ATR Grid Scaling: widens grid spacing during elevated volatility
+    cfg, b, bot = mk(atr_grid_scaling=True, atr_grid_mult=2.0, grid_step_loss=10.0, lots=0.10, rollover_blackout=False)
+    step(b, bot) # 1 BUY @ 4000.3 (0.10 lot = $10/dollar move)
+    b.atr_v = 10.0 # ATR $10.0 -> atr_step = 10 * 2.0 * $10 = $200 (widened from baseline $100)
+    step(b, bot, 3988.0) # Gold drops $12.30 -> loss -$123.00 <= -$100 baseline. But scaled step is -$200!
+    check("ATR grid scaling prevents premature leg 2 when step scaled to -$200", len(b.pos) == 1)
+    step(b, bot, 3979.0) # Gold drops $21.30 -> loss -$213.00 <= -$200.
+    check("ATR grid scaling triggers leg 2 only after full -$200 move", len(b.pos) == 2)
+
+    # 21. Lever 3: Higher-Timeframe (HTF) Macro Alignment & Grid Momentum Gate
+    # Test 3A: HTF Bearish blocks counter-trend BUY
+    cfg, b, bot = mk(htf_filter=True, htf_tf="M5", rollover_blackout=False)
+    b.htf_trend_v = -1; step(b, bot)
+    check("HTF Bearish blocks counter-trend BUY", not b.pos and "WAIT HTF BULLISH" in bot.status)
+
+    # Test 3B: HTF Bullish blocks counter-trend SELL
+    cfg, b, bot = mk(htf_filter=True, htf_tf="M5", rollover_blackout=False)
+    b.ma_v = 4010.0; b.htf_trend_v = 1; step(b, bot)
+    check("HTF Bullish blocks counter-trend SELL", not b.pos and "WAIT HTF BEARISH" in bot.status)
+
+    # Test 3C: HTF Neutral allows normal entry
+    cfg, b, bot = mk(htf_filter=True, htf_tf="M5", rollover_blackout=False)
+    b.htf_trend_v = 0; step(b, bot)
+    check("HTF Neutral allows normal BUY entry", len(b.pos) == 1 and b.pos[0]["dir"] == 1)
+
+    # Test 3D: HTF Bullish guides pullback mode to buy dips
+    cfg, b, bot = mk(htf_filter=True, entry_mode="pullback", pullback_zone=10.0, pullback_rejection_dist=0.5, rollover_blackout=False)
+    b.htf_trend_v = 1; b.ma_v = 3995.0
+    step(b, bot, 4000.0) # dip trough @ 4000.0
+    check("HTF Bullish in pullback mode tracks dip trough", not b.pos and "Wait BUY Bounce" in bot.status)
+    step(b, bot, 4000.6) # bounce +$0.60 >= $0.50 -> BUY
+    check("HTF Bullish triggers BUY bounce entry on dip", len(b.pos) == 1 and b.pos[0]["dir"] == 1)
+
+    # Test 3E: Anti-Averaging Grid Momentum Guard (grid_bounce_req)
+    cfg, b, bot = mk(grid_bounce_req=0.50, rollover_blackout=False, atr_grid_scaling=False, htf_filter=False)
+    step(b, bot) # BUY @ 4000.3
+    step(b, bot, 3989.0) # price drops -$11.30 (loss -$11.30 <= -$10.0 step)
+    check("grid_bounce_req holds leg 2 during active fall", len(b.pos) == 1 and "WAIT BOUNCE" in bot.status)
+    step(b, bot, 3989.6) # price bounces +$0.60 from trough 3989.0 -> triggers leg 2
+    check("grid_bounce_req fires leg 2 after confirmed bounce", len(b.pos) == 2)
+
     print(f"\n{n_ok} checks passed")
 
 

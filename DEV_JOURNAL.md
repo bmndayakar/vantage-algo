@@ -274,16 +274,137 @@ During live demo testing in the early morning (IST), three usability issues emer
 
 ---
 
-## 10. Current System Architecture & Roadmap
+## 10. Chapter 9: The Offline Trade Ledger & Institutional Timeframe Analyzer
+
+### The Inquiry & Need
+The user asked:
+*"are you storing all the closed trades offline along with date time stamp?"*
+*"yes i want you to record every executed trade with all the details which is very useful to go back and analyze data. Especially to understand what is the best time frame to do trading for max profits"*
+
+### The Architectural Problem
+In live algorithmic trading, relying strictly on in-memory dynamic API queries to MT5 has several risks:
+1. **Data Loss / Rollover**: When demo accounts expire, broker logs roll over, or MT5 history is cleared, trade records are permanently lost.
+2. **Missing Time-of-Day Dimensions**: MT5 stores raw timestamps, but quantitative performance analysis requires session classification (Tokyo vs. London vs. London/NY Overlap vs. New York), hourly distribution (IST), holding duration brackets, price deltas, and excursion ratios ($MFE/MAE$).
+3. **No Direct Offline Data Science Tooling**: Traders need a standalone CSV ledger that can be opened in Excel or analyzed via Python with one command.
+
+### The Solutions Implemented
+1. **Automated Offline Trade Persistence (`closed_trades.csv`)**:
+   - Built `sync_closed_trades_to_csv()` in `web_app.py`.
+   - Records every executed trade with zero duplicates, keyed by 64-bit MT5 Ticket ID.
+   - Enriches each trade with 29 comprehensive dimensions:
+     - Identification: `ticket`, `symbol`, `type`, `volume`, `magic`, `trade_tag` (`[BOT]`, `[USER]`, `[RECOVERY]`).
+     - Timing & Timezones: `open_time_ist`, `open_time_server`, `close_time_ist`, `close_time_server`, `open_hour_ist`, `close_hour_ist`, `day_of_week`.
+     - Market Sessions: Automatic classification into `Asian (Tokyo)`, `London`, `London/NY Overlap`, `New York`, and `Pacific/Late US`.
+     - Durations: Exact `duration_sec`, formatted `duration_str`, and scalping bracket `timeframe_tag` (`< 1 min`, `1 - 5 min`, `5 - 15 min`, etc.).
+     - Pricing: `open_price`, `close_price`, `price_diff` (points in favor of trade).
+     - Financials: `gross_profit`, `commission`, `swap`, `net_pnl`, `pnl_per_lot` (normalized per 1.00 lot), `outcome` (`WIN`/`LOSS`/`BE`).
+     - Excursion Telemetry: Peak favorable excursion (`mfe`), deepest drawdown (`mae`), and `mfe_mae_ratio`.
+   - **Continuous Background Auto-Sync**: Automatically updates whenever a trade closes or new excursion telemetry is measured.
+   - **90-Day Startup Catchup**: Automatically populates existing historical trades from MT5 on first boot or account switch.
+2. **One-Click Web Export (`/api/export_trades_csv`)**:
+   - Added `[ ⬇ Export CSV ]` button directly to the Closed Trades tab in the dashboard for instant browser download.
+   - Added `GET /api/trade_analytics` endpoint for programmatic analysis.
+3. **Institutional Quantitative Analyzer (`analyze_trades.py`)**:
+   - Created standalone analytics CLI script: `python analyze_trades.py`.
+   - Generates an institutional-grade scorecard:
+     - **Executive KPIs**: Win Rate, Net PnL, Profit Factor, Expectancy, Payoff Ratio, Average MFE vs MAE.
+     - **Market Session Table**: Direct profitability ranking across Tokyo, London, Overlap, and NY.
+     - **Hourly Distribution (IST)**: 24-hour visual distribution identifying peak profit hours ("Gold Rush Hours") and hours to avoid.
+     - **Holding Duration Analysis**: Compares scalping (< 1m, 1-5m) vs intraday swing performance.
+     - **Directional Edge**: BUY vs SELL profitability.
+     - **Actionable Strategic Takeaways**: Automatic text synthesis identifying optimal trading windows.
+4. **Verification**:
+   - Added 5 unit tests in `scratch/test_closed_trades_sync.py` (ALL PASS).
+   - Core algo test suite remains 100% green (69/69 PASS + 4/4 MT5 Sync PASS).
+
+---
+
+## 11. Chapter 10: Lever 2 — Dynamic ATR Volatility, Spread Expansion Gates & Midnight Rollover Blackout
+
+### The Incident: The -$207 Flash Stop-Out
+During live testing at 02:29 AM IST (04:29 broker time), the bot entered a `BUY 0.10 lots` on Gold and was stopped out **240 milliseconds later** with an instantaneous loss of **-$207.40**.
+Forensic analysis revealed:
+1. **The Broker Midnight Rollover Spread Blowout**: At 02:29 AM IST (21:00 UTC / 23:00 broker time), the global gold market enters its daily rollover settlement window. Interbank liquidity evaporates, and brokers widen spreads massively. Gold spread spiked to **$21.13 per ounce** (Ask: 4077.58 vs Bid: 4056.45).
+2. **The Inactive Guard (`max_spread = 0.0`)**: The spread guard was previously disabled (`0.0`), allowing the bot to buy at the Ask (`4077.38`). The position was immediately valued at the Bid (`4056.64`), creating an instantaneous mark-to-market loss of $(4056.64 - 4077.38) \times 10 = -\$207.40$.
+3. **Emergency SL Execution**: Because `grid_sl = $20.00` scaled proportionally to `eff_grid_sl = $200.00` on 0.10 lots, the loss of `-$207.40` tripped the emergency stop on the very next tick.
+
+### The Solutions: Lever 2 Implemented
+1. **Midnight Rollover Blackout Window (`rollover_blackout: True`)**:
+   - Built `is_in_rollover_window(tc, server_offset, start_ist="02:15", end_ist="03:30")`.
+   - Automatically pauses all new initial entries during the high-spread rollover window (02:15 to 03:30 AM IST).
+   - Displays `🌙 ROLLOVER BLACKOUT (02:15-03:30 IST)` on the radar and telemetry banner.
+2. **Spread Expansion Gates**:
+   - **Absolute Ceiling (`max_spread: 0.50`)**: Enforced 50-cent maximum spread on Gold. Any spread exceeding $0.50 halts entries with `SPREAD WIDE $X.XX > $0.50`.
+   - **Relative Spread Spike Gate (`spread_spike_mult: 2.0`)**: Continuous 30-tick rolling baseline tracker (`spread_history`). If live spread surges beyond 2.0x normal baseline during sudden news events, entries are blocked with `SPREAD SPIKE $X.XX > $0.XX`.
+3. **Dynamic ATR Volatility Grid Adaptation**:
+   - Fixed dollar steps risk bunching grid legs together in violent momentum candles.
+   - When volatility surges, the required adverse move for the next grid leg dynamically widens:
+     $$\text{eff\_step} = \max(\text{eff\_grid\_step\_loss}, \text{ATR}(14) \times \text{atr\_grid\_mult} \times \text{perUnit})$$
+   - Prevents premature leg addition during rapid trending moves.
+4. **Volatility Climax Ceiling (`max_atr: 0.0`)**:
+   - Blocks new entries if ATR(14) exceeds an extreme ceiling during economic releases.
+5. **UI & Dashboard Integration**:
+   - Added full settings controls for Lever 2 in the Settings Modal.
+   - Live spread in Card 1 flashes rose-red with `⚠️ Wide` whenever spread exceeds the threshold.
+
+---
+
+## 12. Chapter 11: The Counter-Trend Whipsaw & The Forensic Case for Lever 3
+
+### The Incident: Two Consecutive - Basket Stop-Outs
+Between 06:30 and 08:00 AM IST on October 29, 2026, the bot suffered two identical catastrophic basket losses totaling **-.40**:
+
+1. **Losing Sequence 1 (06:36 - 06:50 IST / 03:06 - 03:20 UTC)**:
+   - Gold ignited a violent **+.57 rally in 30 minutes** (4036.17 to 4068.74) with **6 consecutive green M5 candles**.
+   - Because M1 price was below a lagging 250-period MA, the M1 pullback engine signaled **SELL** at 4045.10 (#152827819714).
+   - As Gold surged +.49 higher, the bot blindly stacked Leg 2 SELL at 4054.59 (#152827843706).
+   - Gold continued surging to 4060.06 -> Basket hit eff_grid_sl () -> Closed both legs for **-.20** (-.50 + -.70).
+
+2. **Losing Sequence 2 (07:35 - 07:59 IST / 04:05 - 04:29 UTC)**:
+   - Gold reversed and plummeted **-.06 in 35 minutes** (4064.57 to 4039.51) in cascading red M5 candles.
+   - Because M1 price was above the lagging 250-period MA, the M1 pullback engine signaled **BUY** at 4062.17 (#152827998860).
+   - As Gold collapsed -.68 lower, the bot blindly stacked Leg 2 BUY at 4052.49 (#152828019667).
+   - Gold continued plunging to 4047.32 -> Basket hit eff_grid_sl () -> Closed both legs for **-.20** (-.50 + -.70).
+
+3. **Winning Recovery Sequence (08:10 - 08:48 IST)**:
+   - Once Gold stabilized in the Asian session downtrend and the bot traded in alignment with the M5 trend, it achieved **4 consecutive clean wins**: +.80, +.80, +.80, +.40.
+
+### The Underlying Diagnoses
+1. **The Single Lagging MA Trap**: A 250-bar M1 MA (~4.2 hours) is dangerously lagging during sharp V-reversals. Price is below the MA during a rocket (forcing counter-trend shorts) and above the MA during a waterfall (forcing counter-trend longs).
+2. **Blind Grid Averaging**: Adding Leg 2 the millisecond floating PnL drops - without verifying if momentum has slowed down or reversed adds fuel to the fire.
+3. **In-Memory Lifetime**: Python PID 11988 was started at 01:30 AM IST before Lever 2 was authored, meaning the running server had not yet reloaded Lever 2 and offline CSV auto-sync.
+
+### The Architecture for Lever 3
+* **M5/M15 HTF Trend Filter**: Require M1 entries to align with higher-timeframe trend (M5 EMA-9 vs EMA-21 and candle momentum). Never sell into green M5 momentum; never buy into red M5 momentum.
+* **Anti-Averaging Grid Momentum Guard**: Require price exhaustion and bounce (.50 minimum) before permitting any grid addition.
+
+---
+
+## 13. Current System Architecture & Roadmap
 
 ```
-Vantage Algo Status: v2.6 (Session-Calibrated, MT5 Ground-Truth Synced)
-Self-Test Verification: 69/69 PASS + 4/4 MT5 Sync PASS
+Vantage Algo Status: v2.8 (Lever 2 Active: Dynamic ATR & Spread Shields)
+Self-Test Verification: 76/76 PASS + 4/4 MT5 Sync PASS + 5/5 CSV Sync PASS
 ```
 
 ### The Optimization Levers Ahead:
 * **[COMPLETED] Lever 1: Trade Excursion Telemetry (MAE/MFE)** — Real-time and historical trade excursion tracking.
 * **[COMPLETED] Ground Truth Sync: 1:1 MT5 Desktop Alignment** — Reconstructed positions, ticket IDs, period filter.
 * **[COMPLETED] Session Isolation & Timezone Calibration** — Distinct session targets, broker midnight alignment, responsive layout.
-* **[NEXT] Lever 2: Dynamic ATR Volatility & Spread Expansion Gates** — Automatically widen grid spacing or pause entries when broker spread spikes during economic releases.
-* **[UPCOMING] Lever 3: Higher-Timeframe Macro Alignment** — Enforce trend alignment with M15/H1 Moving Averages to ensure the bot rides major momentum waves rather than fighting them.
+* **[COMPLETED] Offline Trade Persistence & Analytics** — 29-column CSV ledger, automatic sync, session/hour/duration analyzer (`analyze_trades.py`).
+* **[COMPLETED] Lever 2: Dynamic ATR Volatility & Spread Expansion Gates** — Rollover blackout window (02:15-03:30 IST), max spread ceiling ($0.50), relative spread spike gate (2.0x), and dynamic ATR grid widening.
+* **[COMPLETED] Lever 3: Higher-Timeframe Macro Alignment & Anti-Averaging Guard** — Enforce trend alignment with M5 EMA 9 vs 21; require $0.40 bounce before adding grid legs.
+* **[COMPLETED] Hard Time Cap Tuning (1.0 Hour)** — Reduced maximum position holding ceiling from 2.0h to 1.0h to prevent opportunity cost lockup during counter-trend drifts.
+
+---
+
+## 14. Stale Basket Dynamics & Opportunity Cost Analysis
+
+### The 1-Hour Stagnant Trade
+At 09:44:23 IST, the bot entered a SELL at 4036.60. Shortly thereafter, Gold pivoted and embarked on a +$10.64 ascent towards 4046.27. The trade hovered between -$7 and -$10 without triggering the -$20 basket stop loss or the +$1.00 trailing arm.
+
+### Why Stagnant Trades Drain Potential Profits
+When holding an underwater single leg, the bot is committed to risk mitigation and blocks all new directional entries:
+1. **Capital & Execution Lockup**: While Gold rallied +$10 upward, the M5 trend turned Bullish. There were multiple 1-minute dip-and-rally formations that would have generated profitable long scalps.
+2. **Architecture Trade-Off**: A single-basket architecture protects from over-leveraging and margin exhaustion, but each minute spent waiting for a stale, drifting position is a minute missed for fresh, trend-aligned scalps.
+3. **The 1-Hour Hard Ceiling**: Lowering `hard_cap_hours` to 1.0 hour ensures that when an entry is wrong or stale, the bot cuts the cord cleanly, absorbs the minor loss, and resets its radar to capitalize on current market flow.

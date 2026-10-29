@@ -282,6 +282,56 @@ The following real-time failures occurred during live testing and trading sessio
 
 ---
 
+
+### Case 21: Automated Offline Trade Persistence (`closed_trades.csv`) & Session/Timeframe Analytics (`analyze_trades.py`)
+* **The Inquiry & Context**: User requested: *"are you storing all the closed trades offline along with date time stamp? yes i want you to record every executed trade with all the details which is very useful to go back and analyze data. Especially to understand what is the best time frame to do trading for max profits"*
+* **The Root Architectural Need**:
+  - Previously, closed trades were only retrieved dynamically in-memory from MT5 API (`mt5.history_deals_get()`).
+  - If MT5 history rolled over or demo expired, historical audit records were lost.
+  - Analyzing "what is the best time frame for max profits" requires structured offline data science columns: entry hour in IST, market session tag, duration brackets, price deltas, normalized PnL per lot, and MFE/MAE ratios.
+* **The Resolution**:
+  1. **Automated Offline CSV Sync Engine (`closed_trades.csv`)**:
+     - Added `sync_closed_trades_to_csv()` in `web_app.py`.
+     - Automatically updates on every deal and trade close with deduplication by ticket ID.
+     - 29 rich quantitative columns: `ticket`, `symbol`, `type`, `volume`, `open_time_ist`, `open_time_server`, `close_time_ist`, `close_time_server`, `open_hour_ist`, `close_hour_ist`, `day_of_week`, `session_tag`, `duration_sec`, `duration_str`, `timeframe_tag`, `open_price`, `close_price`, `price_diff`, `gross_profit`, `commission`, `swap`, `net_pnl`, `pnl_per_lot`, `outcome`, `mfe`, `mae`, `mfe_mae_ratio`, `magic`, `trade_tag`.
+     - 90-day initial catchup on boot to capture existing account history.
+  2. **Institutional Analyzer Tool (`analyze_trades.py`)**:
+     - Dedicated standalone CLI tool (`python analyze_trades.py`) printing:
+       - Executive scorecard: Win Rate %, Net Realized PnL, Profit Factor, Expectancy, Payoff Ratio, Excursion Efficiency.
+       - Performance breakdown across Market Sessions (`Asian`, `London`, `London/NY Overlap`, `New York`, `Pacific`).
+       - Hourly distribution (00:00 to 23:00 IST) highlighting peak profit hours.
+       - Holding duration breakdown (< 1m, 1-5m, 5-15m, 15-60m, > 1h).
+       - Directional edge (BUY vs SELL).
+  3. **One-Click UI Export**:
+     - Added `[ ⬇ Export CSV ]` download button in Closed Trades header in `templates/index.html`.
+     - Backed by `GET /api/export_trades_csv` and `GET /api/trade_analytics`.
+  4. Verified with 5 unit tests in `scratch/test_closed_trades_sync.py` and 69 core self-tests.
+
+---
+
+
+### Case 22: Lever 2 — Dynamic ATR Volatility, Spread Expansion Gates & Rollover Blackout Shield
+* **The Incident & Context**: User asked: *"why did i just lost $207? Implement lever 2 along with rollover blackout window. test it thoroughly"*
+* **Forensic Diagnosis**:
+  - At 02:29 AM IST (04:29 broker time), MT5 broker entered midnight rollover.
+  - XAUUSD spread spiked from normal $0.30 to **$21.13 per ounce**.
+  - `max_spread` was previously set to `0.0` (off). Bot entered `BUY 0.10 lots` at Ask `4077.38` and was instantly marked at Bid `4056.64` (-$207.40).
+  - Tripped proportional `eff_grid_sl = $200.00` within 240 milliseconds.
+* **The Resolution (Lever 2 Full Implementation)**:
+  1. **Rollover Blackout Window (`rollover_blackout: True`)**:
+     - Automatically pauses all initial entries between 02:15 AM and 03:30 AM IST (broker settlement window).
+     - Status updates to `🌙 ROLLOVER BLACKOUT (02:15-03:30 IST)`.
+  2. **Spread Expansion Gates**:
+     - Absolute ceiling: `max_spread = 0.50` on Gold.
+     - Relative spike multiplier: `spread_spike_mult = 2.0` vs rolling 30-tick baseline.
+  3. **Dynamic ATR Volatility Grid Adaptation**:
+     - Dynamic step widening: `step = max(eff_grid_step_loss, atr * atr_grid_mult * perUnit)`.
+     - Prevents adding grid legs prematurely during volatile momentum runs.
+  4. **Volatility Climax Gate**: `max_atr` ceiling blocks entry during economic hurricanes.
+  5. **Verification**: 7 new unit tests in `up_down_tracker_win_bot_xauusd.py` bringing the self-test suite to **76 passing checks**.
+
+---
+
 ## 3. Comprehensive Feature Catalog
 
 ### 1. Strategy Engines (`up_down_tracker_win_bot_xauusd.py`)
@@ -330,6 +380,52 @@ The following real-time failures occurred during live testing and trading sessio
 
 ---
 
+### Case 24: CSV Sync Sort Key Type Mismatch Fix
+* **Date**: October 29, 2026
+* **Trigger**: UI displayed `'<' not supported between instances of 'str' and 'int'`.
+* **Root Cause**: `sync_closed_trades_to_csv()` used a hybrid sort key: `_close_ts` (integer) for newly constructed trades vs `close_time_server` (string) for rows loaded from disk. Sorting mixed types caused a Python `TypeError`.
+* **Fix**: Unified sort key to `key=lambda r: str(r.get("close_time_server", ""))`. ISO formatted server timestamps sort chronologically and safely without type conflicts.
+
+---
+
+### Case 23: The Counter-Trend Whipsaw & Lever 3 (Higher-Timeframe Macro Alignment)
+* **Date**: October 29, 2026
+* **Trigger**: Consecutive -$200 basket stop-outs during Gold's +$32.57 rally and -$25.06 collapse.
+* **Root Causes**:
+  1. *Lagging Single-Timeframe MA*: 250-period M1 MA forced counter-trend shorts during vertical rallies and counter-trend longs during waterfalls.
+  2. *Blind Grid Averaging*: Added Leg 2 into adverse momentum candles without waiting for exhaustion.
+  3. *Process Runtime Lifetime*: Server was running 01:30 AM code in memory before Lever 2 had been restarted.
+* **Fix (Lever 3)**:
+  1. *HTF Trend Filter (`htf_filter: True`, `htf_tf: "M5"`, EMA 9 vs 21)*: Strictly blocks BUY when M5 is Bearish; strictly blocks SELL when M5 is Bullish. Automatically directs pullback engine to buy dips with the macro trend.
+  2. *Anti-Averaging Grid Momentum Guard (`grid_bounce_req: 0.40`)*: Holds grid additions during adverse moves until price confirms a $0.40 bounce/rejection.
+  3. *Clean Verification*: Expanded self-test suite to 83 checks (ALL PASS).
+
+---
+
+### Case 24: CSV Sort Key TypeError Fix (`_close_ts` int vs str)
+* **Date**: October 29, 2026
+* **Trigger**: Web UI displaying `'<' not supported between instances of 'str' and 'int'`.
+* **Root Cause**: In `sync_closed_trades_to_csv()`, legacy rows loaded from disk stored `_close_ts` as `str` (or empty string), while newly constructed rows stored `_close_ts` as `int`. Python 3 raised a `TypeError` when comparing them.
+* **Fix**: Unified the sort key in `web_app.py` to `key=lambda r: str(r.get("close_time_server", ""))`.
+
+---
+
+### Case 25: Stale Trade Lifecycle & Hard Time Cap Default Reduction (1.0 Hour)
+* **Date**: October 29, 2026
+* **Trigger**: Bot holding a single SELL trade for > 1 hour without closing or adding legs.
+* **Forensic Findings**:
+  1. *Trailing Stop Not Armed*: Peak excursion was only +$0.58; trailing stop required +$1.00 (`trail_arm`).
+  2. *Soft Cap Refused Loss*: Soft cap elapsed at 45 min, but correctly refused to close a negative position (`eff_soft_cap_profit: 0.05`).
+  3. *Adverse Move Under Threshold*: Adverse move was -$7.65, which hadn't hit the -$10.00 grid step or -$20.00 stop loss.
+  4. *Hard Cap Default (2.0 Hours) Was Too Lenient*: Kept the trade alive for up to 120 minutes, locking up the bot while Gold was trending upward (+10.64 pts).
+* **Resolution**:
+  1. Reduced `hard_cap_hours` default from `2.0` to `1.0` (60 minutes) in both `Cfg` and `bot_config.json`.
+  2. Maintained dynamic configurability via the Web UI Settings modal (`#cfg-hard_cap_hours`).
+  3. Propagated live update to running bot via `POST /api/config`; stale trade immediately exited with `time-hard` at 10:54:56 IST.
+  4. All 83 unit checks passing.
+
+---
+
 ## 4. Instructions for Future AI Agents
 
 When tasked with modifying, refactoring, or extending this codebase, **adhere strictly to these rules**:
@@ -339,7 +435,7 @@ Before and after touching `up_down_tracker_win_bot_xauusd.py`, run:
 ```powershell
 python up_down_tracker_win_bot_xauusd.py selftest
 ```
-All **55 unit checks** must pass. If you add a feature, add a corresponding test check in `selftest()`.
+All **83 unit checks** must pass. If you add a feature, add a corresponding test check in `selftest()`.
 
 ### Rule 2: Never Remove the Margin Pre-Check or Anti-Flood Cooldown
 Never bypass `check_margin()` or remove `margin_cooldown_until`. Doing so risks broker lockout for order spamming.
@@ -353,3 +449,11 @@ Never bypass `check_margin()` or remove `margin_cooldown_until`. Doing so risks 
 When assisting users or configuring bots:
 * For accounts $< \$200$: Set `grid_max_legs = 2` or `3`, `lots = 0.01`, `grid_sl = 20.00`, and `bailout_on_max_legs = True`.
 * Recommend `entry_mode = "pullback"` for calmer, higher-probability entries on Gold (`XAUUSD`).
+
+
+### Rule 5: Continuous Chat Export (`CHAT_LOG.txt`)
+The complete conversation transcript between the user and assistant is persisted to `CHAT_LOG.txt` in the root workspace.
+* A background watcher (`python export_chat_history.py --watch`) automatically updates `CHAT_LOG.txt` whenever new messages arrive.
+* If making changes or resuming sessions, verify `CHAT_LOG.txt` is updated or run `python export_chat_history.py`.
+
+---

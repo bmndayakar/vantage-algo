@@ -384,6 +384,15 @@
                   Momentum filter. Blocks BUY when &ge; 70 (Overbought climax) and blocks SELL when &le; 30 (Oversold floor).
                 </span>
               </span>
+              <span class="text-slate-300 dark:text-slate-700 mx-1">|</span>
+              <span class="text-slate-500 dark:text-slate-400 has-tooltip inline-flex items-center">
+                <span>HTF: <span id="txt-htf" class="font-mono font-bold text-slate-900 dark:text-white">NEUTRAL</span></span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-right">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">M5 HTF Macro Trend</strong>
+                  M5 EMA(9) vs EMA(21) macro momentum alignment.
+                </span>
+              </span>
             </div>
             <div class="flex justify-between items-center whitespace-nowrap pt-1 border-t border-slate-200/60 dark:border-slate-700/60">
               <span class="text-slate-500 dark:text-slate-400 has-tooltip inline-flex items-center">
@@ -657,6 +666,17 @@
               <span id="radar-rsi-val" class="font-mono font-bold text-slate-800 dark:text-slate-200">50.0</span>
               <span id="radar-rsi-badge" class="px-1.5 py-0.2 rounded text-[10px] font-extrabold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">NORMAL</span>
             </div>
+            <div class="flex items-center space-x-1.5">
+              <span class="has-tooltip inline-flex items-center">
+                <span class="text-slate-400 dark:text-slate-500">HTF Trend:</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-right">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Lever 3: Higher-Timeframe Trend</strong>
+                  M5 EMA(9) vs EMA(21) macro momentum alignment.
+                </span>
+              </span>
+              <span id="radar-htf-badge" class="px-1.5 py-0.2 rounded text-[10px] font-extrabold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">NEUTRAL</span>
+            </div>
             <div class="flex items-center space-x-2 bg-slate-50 dark:bg-slate-800/80 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
               <span class="has-tooltip inline-flex items-center">
                 <span id="radar-waiting-label" class="text-slate-500 dark:text-slate-400 font-medium whitespace-nowrap">Waiting For Price:</span>
@@ -779,10 +799,16 @@
                 <button type="button" onclick="setHistoryPeriod('30d')" id="hbtn-30d" class="px-2 py-0.5 rounded text-[11px] font-medium border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-all">30D</button>
                 <button type="button" onclick="setHistoryPeriod('all')" id="hbtn-all" class="px-2 py-0.5 rounded text-[11px] font-medium border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-all">All</button>
               </div>
-              <span class="text-[10px] text-slate-400 font-mono flex items-center space-x-1">
-                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
-                <span>MT5 Ground Truth</span>
-              </span>
+              <div class="flex items-center space-x-2">
+                <a href="/api/export_trades_csv" download="closed_trades.csv" class="px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-all inline-flex items-center space-x-1" title="Download complete offline closed trades CSV ledger with timestamps and telemetry">
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                  <span>Export CSV</span>
+                </a>
+                <span class="text-[10px] text-slate-400 font-mono flex items-center space-x-1">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
+                  <span>Auto-Synced</span>
+                </span>
+              </div>
             </div>
             <div class="overflow-y-auto max-h-[250px]">
             <table class="w-full text-left text-xs">
@@ -1125,7 +1151,110 @@
                   Blocks orders if broker spread exceeds this threshold (e.g. during volatile news spikes or session rollovers).
                 </span>
               </label>
-              <input type="number" step="0.1" id="cfg-max_spread" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="e.g. 1.0 (0=Off)">
+              <input type="number" step="0.1" id="cfg-max_spread" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="e.g. 0.50 (0=Off)">
+            </div>
+            <div>
+              <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
+                <span>Spread Spike Mult (&times; Baseline)</span>
+                <span class="tip-icon">i</span>
+                <span class="tooltip-box tip-left">
+                  <strong class="block text-amber-400 font-semibold mb-0.5">Anti-News Spread Spike Gate</strong>
+                  Blocks entry if the live spread expands beyond N times the rolling 30-tick baseline (e.g. 2.0&times; during sudden liquidity evaporation or news releases).
+                </span>
+              </label>
+              <input type="number" step="0.5" id="cfg-spread_spike_mult" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="default 2.0 (0=Off)">
+            </div>
+
+            <!-- Rollover Blackout Window (IST) -->
+            <div class="sm:col-span-2 p-3 rounded-xl bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center space-x-2">
+                  <span class="text-base">🌙</span>
+                  <div>
+                    <span class="text-xs font-bold text-slate-800 dark:text-slate-200">Midnight Rollover Blackout Window (IST)</span>
+                    <span class="block text-[10px] text-slate-500 dark:text-slate-400">Strictly blocks new entries during broker rollover when spreads spike 10&times;&ndash;50&times;</span>
+                  </div>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" id="cfg-rollover_blackout" class="sr-only peer" checked>
+                  <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                </label>
+              </div>
+              <div class="grid grid-cols-2 gap-3 mt-2">
+                <div>
+                  <label class="block text-[11px] text-slate-600 dark:text-slate-400 mb-0.5">Blackout Start (IST)</label>
+                  <input type="text" id="cfg-rollover_start_ist" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-white" placeholder="02:15">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-slate-600 dark:text-slate-400 mb-0.5">Blackout End (IST)</label>
+                  <input type="text" id="cfg-rollover_end_ist" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-white" placeholder="03:30">
+                </div>
+              </div>
+            </div>
+
+            <!-- Dynamic ATR Volatility Scaling & Max ATR Ceiling -->
+            <div class="sm:col-span-2 p-3 rounded-xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/40">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center space-x-2">
+                  <span class="text-base">⚡</span>
+                  <div>
+                    <span class="text-xs font-bold text-slate-800 dark:text-slate-200">Lever 2: Dynamic ATR Volatility Grid Adaptation</span>
+                    <span class="block text-[10px] text-slate-500 dark:text-slate-400">Automatically widens grid spacing during elevated volatility; blocks entries on extreme ATR</span>
+                  </div>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" id="cfg-atr_grid_scaling" class="sr-only peer" checked>
+                  <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
+                </label>
+              </div>
+              <div class="grid grid-cols-2 gap-3 mt-2">
+                <div>
+                  <label class="block text-[11px] text-slate-600 dark:text-slate-400 mb-0.5">ATR Grid Multiplier</label>
+                  <input type="number" step="0.1" id="cfg-atr_grid_mult" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-white" placeholder="default 1.5">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-slate-600 dark:text-slate-400 mb-0.5">Max ATR Climax Ceiling ($)</label>
+                  <input type="number" step="0.5" id="cfg-max_atr" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-white" placeholder="e.g. 8.0 (0=Off)">
+                </div>
+              </div>
+            </div>
+
+            <!-- Lever 3: Higher-Timeframe (HTF) Macro Alignment & Grid Momentum Gate -->
+            <div class="sm:col-span-2 p-3 rounded-xl bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40">
+              <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center space-x-2">
+                  <span class="text-base">🧭</span>
+                  <div>
+                    <span class="text-xs font-bold text-slate-800 dark:text-slate-200">Lever 3: Higher-Timeframe (HTF) Macro Alignment &amp; Anti-Averaging Gate</span>
+                    <span class="block text-[10px] text-slate-500 dark:text-slate-400">Enforces M5/M15 trend alignment (never sell green rocket, never buy falling knife) &amp; requires bounce before averaging</span>
+                  </div>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" id="cfg-htf_filter" class="sr-only peer" checked>
+                  <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                </label>
+              </div>
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-2">
+                <div>
+                  <label class="block text-[11px] text-slate-600 dark:text-slate-400 mb-0.5">HTF Timeframe</label>
+                  <select id="cfg-htf_tf" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-white">
+                    <option value="M5" selected>M5 (5 Minutes)</option>
+                    <option value="M15">M15 (15 Minutes)</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-[11px] text-slate-600 dark:text-slate-400 mb-0.5">Fast EMA Period</label>
+                  <input type="number" step="1" id="cfg-htf_ema_fast" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-white" placeholder="default 9">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-slate-600 dark:text-slate-400 mb-0.5">Slow EMA Period</label>
+                  <input type="number" step="1" id="cfg-htf_ema_slow" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-white" placeholder="default 21">
+                </div>
+                <div>
+                  <label class="block text-[11px] text-slate-600 dark:text-slate-400 mb-0.5">Grid Bounce Req ($)</label>
+                  <input type="number" step="0.05" id="cfg-grid_bounce_req" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-900 dark:text-white" placeholder="default 0.40">
+                </div>
+              </div>
             </div>
             <div>
               <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
@@ -1227,7 +1356,7 @@
                   Absolute cutoff for any open basket in hours. If a basket exceeds this lifetime, the bot forces an immediate liquidation regardless of P&amp;L to prevent indefinite swap bleed and margin lockup.
                 </span>
               </label>
-              <input type="number" step="0.5" id="cfg-hard_cap_hours" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="e.g. 2.0 (0=Off)">
+              <input type="number" step="0.5" id="cfg-hard_cap_hours" class="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-900 dark:text-white" placeholder="e.g. 1.0 (0=Off)">
             </div>
             <div>
               <label class="block text-slate-700 dark:text-slate-300 font-medium mb-1 has-tooltip">
@@ -1673,7 +1802,18 @@
 
         bidEl.innerText = s.market.bid.toFixed(2);
         document.getElementById('txt-ask').innerText = s.market.ask.toFixed(2);
-        document.getElementById('txt-spread').innerText = `$${s.market.spread.toFixed(2)}`;
+        const sprEl = document.getElementById('txt-spread');
+        if (sprEl) {
+          sprEl.innerText = `$${s.market.spread.toFixed(2)}`;
+          const maxSpr = (s.config && s.config.max_spread) ? s.config.max_spread : 0.50;
+          if (maxSpr > 0 && s.market.spread > maxSpr) {
+            sprEl.className = 'text-rose-600 dark:text-rose-400 font-black animate-pulse';
+            sprEl.title = `Spread $${s.market.spread.toFixed(2)} exceeds Max $${maxSpr.toFixed(2)}! Entries blocked.`;
+          } else {
+            sprEl.className = 'text-amber-600 dark:text-amber-400 font-bold';
+            sprEl.title = 'Normal spread';
+          }
+        }
       }
 
       // Telemetry & Entry Radar
@@ -1758,6 +1898,32 @@
             rRsiBadge.innerText = 'NORMAL';
             rRsiBadge.className = 'px-1.5 py-0.2 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700';
             rRsiBadge.title = `RSI (${rsiNum.toFixed(1)}) within safe bounds (${osLevel}-${obLevel}): Momentum clear for entries`;
+          }
+        }
+
+        const rHtfBadge = document.getElementById('radar-htf-badge');
+        const txtHtf = document.getElementById('txt-htf');
+        if (telem && telem.htf_status) {
+          const status = telem.htf_status;
+          const tfStr = telem.htf_tf || 'M5';
+          const fastVal = telem.htf_fast || 0;
+          const slowVal = telem.htf_slow || 0;
+          if (rHtfBadge) {
+            rHtfBadge.innerText = `${tfStr} ${status}`;
+            if (status === 'BULLISH') {
+              rHtfBadge.className = 'px-1.5 py-0.2 rounded text-[10px] font-extrabold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30';
+              rHtfBadge.title = `${tfStr} Bullish (EMA ${fastVal} > ${slowVal}): BUY only, SELL entries blocked`;
+            } else if (status === 'BEARISH') {
+              rHtfBadge.className = 'px-1.5 py-0.2 rounded text-[10px] font-extrabold bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30';
+              rHtfBadge.title = `${tfStr} Bearish (EMA ${fastVal} < ${slowVal}): SELL only, BUY entries blocked`;
+            } else {
+              rHtfBadge.className = 'px-1.5 py-0.2 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700';
+              rHtfBadge.title = `${tfStr} Neutral: Both BUY & SELL entries allowed`;
+            }
+          }
+          if (txtHtf) {
+            txtHtf.innerText = status;
+            txtHtf.className = status === 'BULLISH' ? 'font-mono text-emerald-500 font-bold' : (status === 'BEARISH' ? 'font-mono text-rose-500 font-bold' : 'font-mono text-slate-700 dark:text-slate-300');
           }
         }
 
@@ -2648,6 +2814,18 @@
         soft_cap_min: parseInt(document.getElementById('cfg-soft_cap_min').value),
         grid_sl: parseFloat(document.getElementById('cfg-grid_sl').value),
         max_spread: parseFloat(document.getElementById('cfg-max_spread').value) || 0.0,
+        rollover_blackout: document.getElementById('cfg-rollover_blackout') ? document.getElementById('cfg-rollover_blackout').checked : true,
+        rollover_start_ist: document.getElementById('cfg-rollover_start_ist')?.value || '02:15',
+        rollover_end_ist: document.getElementById('cfg-rollover_end_ist')?.value || '03:30',
+        spread_spike_mult: parseFloat(document.getElementById('cfg-spread_spike_mult')?.value) || 2.0,
+        atr_grid_scaling: document.getElementById('cfg-atr_grid_scaling') ? document.getElementById('cfg-atr_grid_scaling').checked : true,
+        atr_grid_mult: parseFloat(document.getElementById('cfg-atr_grid_mult')?.value) || 1.5,
+        max_atr: parseFloat(document.getElementById('cfg-max_atr')?.value) || 0.0,
+        htf_filter: document.getElementById('cfg-htf_filter') ? document.getElementById('cfg-htf_filter').checked : true,
+        htf_tf: document.getElementById('cfg-htf_tf')?.value || 'M5',
+        htf_ema_fast: parseInt(document.getElementById('cfg-htf_ema_fast')?.value) || 9,
+        htf_ema_slow: parseInt(document.getElementById('cfg-htf_ema_slow')?.value) || 21,
+        grid_bounce_req: parseFloat(document.getElementById('cfg-grid_bounce_req')?.value) || 0.0,
         max_ma_dist: parseFloat(document.getElementById('cfg-max_ma_dist').value) || 0.0,
         min_entry_gap_sec: parseInt(document.getElementById('cfg-min_entry_gap_sec').value) || 15,
         rsi_filter: document.getElementById('cfg-rsi_filter').checked,
