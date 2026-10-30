@@ -1,28 +1,21 @@
-import MetaTrader5 as mt5
-from datetime import datetime, timezone
+import urllib.request
+import json
 
-if not mt5.initialize():
-    print("Failed to initialize MT5")
-    exit(1)
+req = urllib.request.urlopen('http://localhost:8000/api/state')
+data = json.loads(req.read().decode('utf-8'))
+telem = data.get('telemetry', {})
+bot = data.get('bot', {})
+market = data.get('market', {})
 
-symbol = "XAUUSD"
-pos = mt5.positions_get(symbol=symbol)
-print(f"--- OPEN POSITIONS ({len(pos) if pos else 0}) ---")
-if pos:
-    for p in pos:
-        print(f"Ticket: {p.ticket}, Type: {'BUY' if p.type==0 else 'SELL'}, Lots: {p.volume}, OpenPrice: {p.price_open}, Current: {p.price_current}, SL: {p.sl}, TP: {p.tp}, PnL: {p.profit}")
-
-acc = mt5.account_info()
-if acc:
-    print(f"Account: Login={acc.login}, Balance={acc.balance}, Equity={acc.equity}, Margin={acc.margin}, FreeMargin={acc.margin_free}")
-
-# Check M1, M5, M15, H1 trend
-for tf_name, tf in [("M1", mt5.TIMEFRAME_M1), ("M5", mt5.TIMEFRAME_M5), ("M15", mt5.TIMEFRAME_M15), ("H1", mt5.TIMEFRAME_H1)]:
-    rates = mt5.copy_rates_from_pos(symbol, tf, 0, 5)
-    if rates is not None and len(rates) > 0:
-        latest = rates[-1]
-        prev = rates[-2]
-        print(f"[{tf_name}] Latest Close: {latest['close']}, Prev Close: {prev['close']}, High: {latest['high']}, Low: {latest['low']}")
-
-mt5.shutdown()
-
+print("=== CURRENT LIVE TELEMETRY ===")
+print("Bot Status:", bot.get('status'))
+print("Action Side:", telem.get('action_side'))
+print("Target Desc:", telem.get('target_entry_desc', '').encode('ascii', 'ignore').decode())
+print("Buy Desc:", telem.get('buy_target_desc', '').encode('ascii', 'ignore').decode())
+print("Sell Desc:", telem.get('sell_target_desc', '').encode('ascii', 'ignore').decode())
+print(f"MA: {telem.get('current_ma')} | Dist: {telem.get('dist_ma')} | Max Dist: {telem.get('max_ma_dist')}")
+print(f"TCS Status: {telem.get('tcs_status')} | Dir: {telem.get('tcs_dir')} | Bull: {telem.get('tcs_bull_score')} | Bear: {telem.get('tcs_bear_score')}")
+print(f"ADX: {telem.get('tcs_adx')} (Min: 25.0) | Rising: {telem.get('tcs_adx_rising')} | DI+: {telem.get('tcs_di_plus')} | DI-: {telem.get('tcs_di_minus')}")
+print(f"Structure: {telem.get('tcs_structure')} | MACD Hist: {telem.get('tcs_macd_hist')}")
+print(f"Pillars: P1_bull={telem.get('tcs_p1_bull')} P1_bear={telem.get('tcs_p1_bear')} | P2_bull={telem.get('tcs_p2_bull')} P2_bear={telem.get('tcs_p2_bear')}")
+print(f"         P3_bull={telem.get('tcs_p3_bull')} P3_bear={telem.get('tcs_p3_bear')} | P4_bull={telem.get('tcs_p4_bull')} P4_bear={telem.get('tcs_p4_bear')}")

@@ -1626,8 +1626,19 @@ class BotManager:
                         self.live_ma = 0.0
                         self.get_mt5_account_and_market()
 
+                # If ui_mode is noob (or being updated to noob), apply noob preset
+                req_ui_mode = str(new_cfg.get("ui_mode", getattr(self.cfg, "ui_mode", "noob"))).lower()
+                req_noob_lvl = int(new_cfg.get("noob_level", getattr(self.cfg, "noob_level", 3)))
+
+                if req_ui_mode == "noob":
+                    bot_module.apply_noob_preset_to_cfg(self.cfg, req_noob_lvl)
+                    self.cfg.ui_mode = "noob"
+
                 for k, v in new_cfg.items():
                     if k == "symbol":
+                        continue
+                    # When in noob mode, do not let manual fields override noob presets except lots, side, etc.
+                    if req_ui_mode == "noob" and k in ("tcs_min_pillars", "tcs_adx_min", "max_ma_dist", "pullback_zone", "grid_sl", "trail_arm", "trail_min_lock", "hard_cap_hours"):
                         continue
                     if hasattr(self.cfg, k):
                         target_type = type(getattr(self.cfg, k))

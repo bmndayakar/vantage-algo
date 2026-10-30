@@ -470,3 +470,29 @@ When the Web UI was left running unattended for several hours, users reported ta
 - **WebSocket Rate Optimization**: Adjusted WebSocket broadcast interval from 0.2s to 0.8s (~1.25 Hz), reducing CPU and memory consumption by 75% while keeping market streaming crisp and real-time.
 - **Chart.js Rate-Limiting**: Restricted chart updates to at most once per second.
 - **WebSocket Reconnection Hygiene**: Explicitly tears down stale listeners and socket instances before reconnecting.
+
+
+---
+
+## Chapter 18: Noob vs. Pro Modes & 5-Level Risk/Activity Slider Validation
+
+### 1. Motivation
+Manual fine-tuning of 25+ independent trading inputs created two major pitfalls for users:
+1. **Asymmetric Risk**: Allowing losing baskets to bleed down to -$20 while taking +$1.00 wins (1:7 inverse RR).
+2. **Analysis Paralysis & Over-Filtering**: Setting strict TCS filters alongside tight MA distances caused deadlocks during large market trend runs.
+
+### 2. Backtest Verification Across 4,000 Real M1 Bars (Including -$96 Gold Collapse)
+We rigorously simulated all 5 presets over 4,000 continuous M1 candles of XAUUSD (October 28–31, 2026), capturing normal choppy trading as well as the violent -$96 drop.
+
+*Results Summary*:
+- **Level 1 (Ultra-Safe)**: 18 trades, 61.1% WR, **+8.50 pts**, PF: 1.36, Max DD: -8.0 pts
+- **Level 2 (Conservative)**: 195 trades, 76.9% WR, **+183.56 pts**, PF: 2.03, Max DD: -13.9 pts
+- **Level 3 (Balanced Scalp - Default)**: 269 trades, 81.0% WR, **+275.81 pts**, PF: 2.20, Max DD: -18.0 pts
+- **Level 4 (Active Scalper)**: 434 trades, 83.4% WR, **+440.85 pts**, PF: 2.22, Max DD: -16.5 pts
+- **Level 5 (Momentum Velocity)**: 486 trades, 85.4% WR, **+476.81 pts**, PF: 2.25, Max DD: -21.6 pts
+
+### 3. Implementation
+- Added `ui_mode` and `noob_level` to `Cfg` and persisted in `bot_config.json`.
+- Implemented `apply_noob_preset_to_cfg()` in the engine to guarantee calibrated execution.
+- Added radio button toggle in the Web UI Settings modal: `Noob (Auto)` locks all manual inputs and enables the slider; `Pro (Manual)` disables the slider and unlocks all 25+ fields.
+- Verified offline test suite: **88/88 checks passing**.

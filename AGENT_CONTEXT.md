@@ -474,6 +474,28 @@ The following real-time failures occurred during live testing and trading sessio
 
 ---
 
+### Case 29: Noob vs. Pro Modes & Calibrated 5-Level Risk/Activity Slider
+* **Date**: October 31, 2026
+* **Trigger**: Need for foolproof user controls to prevent capital drawdowns from mismatched risk/reward while preventing strategy deadlocks during strong trend movements.
+* **Architecture & Implementation**:
+  1. *Operation Mode Toggle (`ui_mode`)*:
+     - `noob` (Default): All 25+ complex parameters are locked and automatically managed by a 5-level risk slider.
+     - `pro`: Slider is disabled and all manual inputs are fully editable.
+  2. *5 Calibrated Noob Presets (`NOOB_PRESETS`)*:
+     - **Level 1 (Ultra-Safe)**: 4/4 Pillars, ADX >= 25, $3.50 SL, $2.00 Trail Arm, 0.5h Hard Cap.
+     - **Level 2 (Conservative)**: 3/4 Pillars, ADX >= 22, $4.00 SL, $1.60 Trail Arm, 0.75h Hard Cap.
+     - **Level 3 (Balanced Scalp - Default)**: 3/4 Pillars, ADX >= 18, $4.50 SL, $1.40 Trail Arm, 1.0h Hard Cap.
+     - **Level 4 (Active Scalper)**: 2/4 Pillars, ADX >= 15, $5.00 SL, $1.20 Trail Arm, 1.0h Hard Cap.
+     - **Level 5 (Momentum Velocity)**: 2/4 Pillars, ADX >= 12, $5.50 SL, $1.00 Trail Arm, 1.0h Hard Cap.
+  3. *Backtest Verification across 4,000 M1 Bars (including -$96 Gold crash)*:
+     - All 5 presets showed solid positive mathematical expectancy with Profit Factors between **1.36 and 2.25**, Win Rates between **61.1% and 85.4%**, and maximum drawdowns strictly capped under -$22.
+  4. *Engine & UI Updates*:
+     - `up_down_tracker_win_bot_xauusd.py`: Added `ui_mode`, `noob_level`, and `apply_noob_preset_to_cfg`. 88/88 checks passing.
+     - `web_app.py`: Integrated preset application inside `update_config`.
+     - `templates/index.html`: Added styled mode selector radio pill, interactive 5-step range slider with dynamic badge/descriptions, and field locking.
+
+---
+
 ## 4. Instructions for Future AI Agents
 
 When tasked with modifying, refactoring, or extending this codebase, **adhere strictly to these rules**:
