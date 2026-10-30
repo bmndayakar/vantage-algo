@@ -93,6 +93,15 @@ class Cfg:
     htf_ema_slow: int = 21               # Slow EMA period on HTF
     htf_neutral_band: float = 0.50       # Dollar band within which HTF is considered neutral
     grid_bounce_req: float = 0.0        # Lever 3B: Min price bounce/rejection ($) before adding grid leg
+    trend_system: str = "legacy"         # legacy | tcs | hybrid : 4-Pillar Trend Confirmation System switch
+    tcs_tf: str = "M1"                   # TCS evaluation timeframe ("M1" or "M5")
+    tcs_ema_fast: int = 50               # Pillar 1 fast EMA
+    tcs_ema_slow: int = 200              # Pillar 1 slow EMA
+    tcs_adx_period: int = 14             # Pillar 2 ADX period
+    tcs_adx_min: float = 25.0            # Pillar 2 min ADX threshold
+    tcs_adx_require_rising: bool = False # Pillar 2 require ADX slope > 0
+    tcs_structure_bars: int = 20         # Pillar 3 swing lookback bars
+    tcs_min_pillars: int = 3             # Min confirming pillars required (3 or 4)
     trail_on: bool = True
     trail_arm: float = 1.00
     trail_give_frac: float = 0.20
@@ -177,6 +186,8 @@ class Bot:
         s.htf_dir = 0
         s.htf_fast = 0.0
         s.htf_slow = 0.0
+        s.tcs_dir = 0
+        s.tcs_state = {}
         s.grid_trough = 0.0
         s.grid_crest = 0.0
         s.events = []
@@ -244,6 +255,18 @@ class Bot:
         if hasattr(s.br, "htf_trend"):
             td, hf, hs = s.br.htf_trend(c.htf_tf, c.htf_ema_fast, c.htf_ema_slow, c.htf_neutral_band)
             s.htf_dir = td; s.htf_fast = hf; s.htf_slow = hs
+        if hasattr(s.br, "tcs_eval"):
+            s.tcs_state = s.br.tcs_eval(
+                tf_str=c.tcs_tf,
+                ema_fast=c.tcs_ema_fast,
+                ema_slow=c.tcs_ema_slow,
+                adx_period=c.tcs_adx_period,
+                adx_min=c.tcs_adx_min,
+                require_rising=c.tcs_adx_require_rising,
+                lookback=c.tcs_structure_bars,
+                min_pillars=c.tcs_min_pillars,
+            )
+            s.tcs_dir = s.tcs_state.get("direction", 0)
         eq, mg = s.br.equity_margin(); s.exposure = (mg / eq * 100.0) if eq > 0 else 0.0
 
         # 1. SCAN POSITIONS (Separate grid stack from recovery scalps)
@@ -536,7 +559,14 @@ class Bot:
 
                 if c.entry_mode == "pullback":
                     # PULLBACK REJECTION ENGINE: Buys dips, sells rallies off MA
-                    if c.htf_filter and s.htf_dir != 0:
+                    if c.trend_system in ("tcs", "hybrid"):
+                        if s.tcs_dir == 0:
+                            b_sc = s.tcs_state.get("bull_score", 0)
+                            s_sc = s.tcs_state.get("bear_score", 0)
+                            s.status = f"TCS CHOP / NO TREND ({b_sc}B/{s_sc}S < {c.tcs_min_pillars})"
+                            return
+                        macro_dir = s.tcs_dir
+                    elif c.htf_filter and s.htf_dir != 0:
                         macro_dir = s.htf_dir
                     else:
                         macro_dir = 1 if bid >= s.ma else -1
@@ -580,11 +610,20 @@ class Bot:
                             return
 
                 else:
-                    # CLASSIC (Direct MA cross/level)
-                    s.status = "SIGNAL READY"
-                    if bid > s.ma: d = 1
-                    elif bid < s.ma: d = -1
-                    else: return
+                    # CLASSIC / TCS (Direct trend signal)
+                    if c.trend_system in ("tcs", "hybrid"):
+                        if s.tcs_dir == 0:
+                            b_sc = s.tcs_state.get("bull_score", 0)
+                            s_sc = s.tcs_state.get("bear_score", 0)
+                            s.status = f"TCS CHOP / NO TREND ({b_sc}B/{s_sc}S < {c.tcs_min_pillars})"
+                            return
+                        d = s.tcs_dir
+                        s.status = f"TCS CONFIRMED ({'BUY' if d > 0 else 'SELL'} {s.tcs_state.get('bull_score' if d > 0 else 'bear_score', 0)}/4)"
+                    else:
+                        s.status = "SIGNAL READY"
+                        if bid > s.ma: d = 1
+                        elif bid < s.ma: d = -1
+                        else: return
 
                 # 1. Overextension Guard: do not buy/sell if price is stretched too far from MA
                 if c.max_ma_dist > 0 and dist > c.max_ma_dist:
@@ -790,6 +829,187 @@ class MT5Broker:
         if a is None: return 0.0, 0.0
         return a.equity, a.margin
 
+    def tcs_eval(s, tf_str="M1", ema_fast=50, ema_slow=200, adx_period=14, adx_min=25.0, require_rising=False, lookback=20, min_pillars=3):
+        """
+        4-Pillar Trend Confirmation System (TCS):
+        Pillar 1: 50 EMA vs 200 EMA + Close price vs both (Direction)
+        Pillar 2: ADX(14) >= 25, +DI/-DI confirmation, optionally rising (Strength)
+        Pillar 3: Swing Pivot Structure HH/HL vs LH/LL (Structure)
+        Pillar 4: MACD(12,26,9) Histogram sign and slope (Momentum)
+        Strictly evaluates closed candle (shift 1).
+        """
+        tf = s.mt5.TIMEFRAME_M1 if str(tf_str).upper() == "M1" else s.mt5.TIMEFRAME_M5
+        n_needed = max(ema_slow + 50, 260)
+        # Shift 1: closed candle discipline
+        r = s.mt5.copy_rates_from_pos(s.c.symbol, tf, 1, n_needed)
+        if r is None or len(r) < ema_slow + 10:
+            return {"direction": 0, "bull_score": 0, "bear_score": 0, "status": "INSUFFICIENT_DATA"}
+
+        closes = s.np.asarray(r["close"], dtype=float)
+        highs = s.np.asarray(r["high"], dtype=float)
+        lows = s.np.asarray(r["low"], dtype=float)
+        last_c = float(closes[-1])
+        n = len(closes)
+
+        # Helper EMA
+        def _ema(arr, span):
+            alpha = 2.0 / (span + 1.0)
+            res = s.np.empty_like(arr)
+            res[0] = arr[0]
+            for idx in range(1, len(arr)):
+                res[idx] = res[idx - 1] * (1.0 - alpha) + arr[idx] * alpha
+            return res
+
+        # Pillar 1: Trend Direction
+        ema_f_series = _ema(closes, ema_fast)
+        ema_s_series = _ema(closes, ema_slow)
+        ef = float(ema_f_series[-1])
+        es = float(ema_s_series[-1])
+
+        p1_bull = (ef > es) and (last_c > ef) and (last_c > es)
+        p1_bear = (ef < es) and (last_c < ef) and (last_c < es)
+
+        # Pillar 2: Trend Strength (ADX & DI)
+        tr = s.np.zeros(n)
+        dm_p = s.np.zeros(n)
+        dm_m = s.np.zeros(n)
+        for i in range(1, n):
+            hd = highs[i] - highs[i - 1]
+            ld = lows[i - 1] - lows[i]
+            tr[i] = max(highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1]))
+            if hd > ld and hd > 0: dm_p[i] = hd
+            if ld > hd and ld > 0: dm_m[i] = ld
+
+        tr_sm = s.np.zeros(n)
+        dp_sm = s.np.zeros(n)
+        dm_sm = s.np.zeros(n)
+        p_adx = adx_period
+        if n > p_adx:
+            tr_sm[p_adx] = s.np.sum(tr[1:p_adx + 1])
+            dp_sm[p_adx] = s.np.sum(dm_p[1:p_adx + 1])
+            dm_sm[p_adx] = s.np.sum(dm_m[1:p_adx + 1])
+            for i in range(p_adx + 1, n):
+                tr_sm[i] = tr_sm[i - 1] - (tr_sm[i - 1] / p_adx) + tr[i]
+                dp_sm[i] = dp_sm[i - 1] - (dp_sm[i - 1] / p_adx) + dm_p[i]
+                dm_sm[i] = dm_sm[i - 1] - (dm_sm[i - 1] / p_adx) + dm_m[i]
+
+        di_p = s.np.zeros(n)
+        di_m = s.np.zeros(n)
+        dx = s.np.zeros(n)
+        for i in range(p_adx, n):
+            if tr_sm[i] > 0:
+                di_p[i] = 100.0 * (dp_sm[i] / tr_sm[i])
+                di_m[i] = 100.0 * (dm_sm[i] / tr_sm[i])
+                denom = di_p[i] + di_m[i]
+                if denom > 0:
+                    dx[i] = 100.0 * abs(di_p[i] - di_m[i]) / denom
+
+        adx_series = s.np.zeros(n)
+        s_idx = p_adx * 2 - 1
+        if s_idx < n:
+            adx_series[s_idx] = s.np.mean(dx[p_adx:s_idx + 1])
+            for i in range(s_idx + 1, n):
+                adx_series[i] = (adx_series[i - 1] * (p_adx - 1) + dx[i]) / p_adx
+
+        adx_val = float(adx_series[-1])
+        adx_prev = float(adx_series[-2]) if n >= 2 else adx_val
+        adx_rising = adx_val > adx_prev
+        adx_ok = (adx_val >= adx_min) and (adx_rising if require_rising else True)
+        di_plus_val = float(di_p[-1])
+        di_minus_val = float(di_m[-1])
+
+        p2_bull = adx_ok and (di_plus_val > di_minus_val)
+        p2_bear = adx_ok and (di_minus_val > di_plus_val)
+
+        # Pillar 3: Price Structure (Higher Highs/Lows vs Lower Highs/Lows)
+        pivots = []
+        st_bar = max(1, n - lookback)
+        for i in range(st_bar, n - 1):
+            if highs[i] > highs[i - 1] and highs[i] > highs[i + 1]:
+                pivots.append(("H", highs[i]))
+            elif lows[i] < lows[i - 1] and lows[i] < lows[i + 1]:
+                pivots.append(("L", lows[i]))
+
+        sh = [p[1] for p in pivots if p[0] == "H"]
+        sl = [p[1] for p in pivots if p[0] == "L"]
+        p3_bull = False
+        p3_bear = False
+        struct_tag = "CHOPPY"
+        if len(sh) >= 2 and len(sl) >= 2:
+            if sh[-1] > sh[-2] and sl[-1] > sl[-2]:
+                p3_bull = True
+                struct_tag = "HH_HL_BULLISH"
+            elif sh[-1] < sh[-2] and sl[-1] < sl[-2]:
+                p3_bear = True
+                struct_tag = "LH_LL_BEARISH"
+        else:
+            if closes[-1] > closes[-5] and lows[-1] > lows[-5]:
+                p3_bull = True
+                struct_tag = "MOM_UP"
+            elif closes[-1] < closes[-5] and highs[-1] < highs[-5]:
+                p3_bear = True
+                struct_tag = "MOM_DN"
+
+        # Pillar 4: MACD Histogram (12, 26, 9)
+        f_macd = _ema(closes, 12)
+        s_macd = _ema(closes, 26)
+        macd_l = f_macd - s_macd
+        sig_l = s.np.zeros_like(macd_l)
+        if len(macd_l) >= 35:
+            sig_sub = _ema(macd_l[25:], 9)
+            sig_l[25:] = sig_sub
+        hist_l = macd_l - sig_l
+        hist_val = float(hist_l[-1])
+        hist_prev = float(hist_l[-2]) if n >= 2 else hist_val
+        hist_rising = hist_val > hist_prev
+
+        p4_bull = (hist_val > 0) and hist_rising
+        p4_bear = (hist_val < 0) and (not hist_rising)
+
+        bull_score = int(sum([p1_bull, p2_bull, p3_bull, p4_bull]))
+        bear_score = int(sum([p1_bear, p2_bear, p3_bear, p4_bear]))
+
+        direction = 0
+        if bull_score >= min_pillars and bull_score > bear_score:
+            direction = 1
+        elif bear_score >= min_pillars and bear_score > bull_score:
+            direction = -1
+
+        status_str = "NEUTRAL"
+        if bull_score == 4: status_str = "CONFIRMED BULLISH (4/4)"
+        elif bear_score == 4: status_str = "CONFIRMED BEARISH (4/4)"
+        elif direction == 1: status_str = f"PROBABLE BULLISH ({bull_score}/4)"
+        elif direction == -1: status_str = f"PROBABLE BEARISH ({bear_score}/4)"
+        else: status_str = f"CHOPPY / FILTERED ({bull_score}B/{bear_score}S)"
+
+        return {
+            "direction": direction,
+            "bull_score": bull_score,
+            "bear_score": bear_score,
+            "status": status_str,
+            "ema_fast": round(ef, 2),
+            "ema_slow": round(es, 2),
+            "p1_bull": bool(p1_bull),
+            "p1_bear": bool(p1_bear),
+            "adx": round(adx_val, 1),
+            "adx_rising": bool(adx_rising),
+            "di_plus": round(di_plus_val, 1),
+            "di_minus": round(di_minus_val, 1),
+            "p2_bull": bool(p2_bull),
+            "p2_bear": bool(p2_bear),
+            "structure": struct_tag,
+            "p3_bull": bool(p3_bull),
+            "p3_bear": bool(p3_bear),
+            "macd": round(float(macd_l[-1]), 2),
+            "macd_sig": round(float(sig_l[-1]), 2),
+            "macd_hist": round(hist_val, 2),
+            "macd_rising": bool(hist_rising),
+            "p4_bull": bool(p4_bull),
+            "p4_bear": bool(p4_bear),
+            "last_close": round(last_c, 2),
+            "bar_closed": True,
+        }
+
     def _fill(s):
         i = s.mt5.symbol_info(s.c.symbol); m = s.mt5
         if i is None: return m.ORDER_FILLING_IOC
@@ -939,6 +1159,10 @@ class FakeBroker:
     def atr(s): return s.atr_v
     def rsi(s, period=14): return s.rsi_v
     def htf_trend(s, tf_str="M5", fast=9, slow=21, neutral_band=0.50): return s.htf_trend_v, s.htf_fast_v, s.htf_slow_v
+    def tcs_eval(s, **kwargs):
+        if hasattr(s, "tcs_v") and s.tcs_v is not None:
+            return s.tcs_v
+        return {"direction": 0, "bull_score": 0, "bear_score": 0, "status": "NEUTRAL", "ema_fast": 4000.0, "ema_slow": 4000.0, "adx": 20.0, "di_plus": 20.0, "di_minus": 20.0, "structure": "CHOPPY", "macd_hist": 0.0, "bar_closed": True}
     def tick_value_size(s): return 1.0, 0.01
     def equity_margin(s): return 1000.0, 10.0
     def sleep(s, x): s.sleeps += 1
@@ -1270,6 +1494,33 @@ def selftest():
     check("grid_bounce_req holds leg 2 during active fall", len(b.pos) == 1 and "WAIT BOUNCE" in bot.status)
     step(b, bot, 3989.6) # price bounces +$0.60 from trough 3989.0 -> triggers leg 2
     check("grid_bounce_req fires leg 2 after confirmed bounce", len(b.pos) == 2)
+
+    # Test TCS 1: TCS Chop (direction=0) blocks entry
+    cfg, b, bot = mk(trend_system="tcs", rollover_blackout=False, htf_filter=False)
+    b.tcs_v = {"direction": 0, "bull_score": 1, "bear_score": 1, "status": "CHOPPY / FILTERED"}
+    step(b, bot)
+    check("TCS Chop blocks trade when direction == 0", not b.pos and "TCS CHOP" in bot.status)
+
+    # Test TCS 2: TCS Confirmed Bullish opens BUY
+    cfg, b, bot = mk(trend_system="tcs", rollover_blackout=False, htf_filter=False)
+    b.tcs_v = {"direction": 1, "bull_score": 4, "bear_score": 0, "status": "CONFIRMED BULLISH (4/4)"}
+    step(b, bot)
+    check("TCS Confirmed Bullish (4/4) opens BUY", len(b.pos) == 1 and b.pos[0]["dir"] == 1)
+
+    # Test TCS 3: TCS Confirmed Bearish opens SELL
+    cfg, b, bot = mk(trend_system="tcs", rollover_blackout=False, htf_filter=False)
+    b.tcs_v = {"direction": -1, "bull_score": 0, "bear_score": 4, "status": "CONFIRMED BEARISH (4/4)"}
+    step(b, bot)
+    check("TCS Confirmed Bearish (4/4) opens SELL", len(b.pos) == 1 and b.pos[0]["dir"] == -1)
+
+    # Test TCS 4: TCS Hybrid in pullback mode guides dip buying
+    cfg, b, bot = mk(trend_system="hybrid", entry_mode="pullback", pullback_zone=10.0, pullback_rejection_dist=0.5, rollover_blackout=False, htf_filter=False)
+    b.tcs_v = {"direction": 1, "bull_score": 3, "bear_score": 0, "status": "PROBABLE BULLISH (3/4)"}
+    b.ma_v = 3995.0
+    step(b, bot, 4000.0)
+    check("TCS Hybrid tracks pullback dip trough", not b.pos and "Wait BUY Bounce" in bot.status)
+    step(b, bot, 4000.6)
+    check("TCS Hybrid fires BUY on confirmed bounce", len(b.pos) == 1 and b.pos[0]["dir"] == 1)
 
     print(f"\n{n_ok} checks passed")
 

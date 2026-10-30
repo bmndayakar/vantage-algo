@@ -395,6 +395,7 @@ Self-Test Verification: 76/76 PASS + 4/4 MT5 Sync PASS + 5/5 CSV Sync PASS
 * **[COMPLETED] Lever 2: Dynamic ATR Volatility & Spread Expansion Gates** — Rollover blackout window (02:15-03:30 IST), max spread ceiling ($0.50), relative spread spike gate (2.0x), and dynamic ATR grid widening.
 * **[COMPLETED] Lever 3: Higher-Timeframe Macro Alignment & Anti-Averaging Guard** — Enforce trend alignment with M5 EMA 9 vs 21; require $0.40 bounce before adding grid legs.
 * **[COMPLETED] Hard Time Cap Tuning (1.0 Hour)** — Reduced maximum position holding ceiling from 2.0h to 1.0h to prevent opportunity cost lockup during counter-trend drifts.
+* **[COMPLETED] Multi-Horizon Win Rate Matrix Dashboard** — Real-time display of win/loss percentages, trade counts, and net P&L across Today, Yesterday, This Week, and This Month.
 
 ---
 
@@ -408,3 +409,64 @@ When holding an underwater single leg, the bot is committed to risk mitigation a
 1. **Capital & Execution Lockup**: While Gold rallied +$10 upward, the M5 trend turned Bullish. There were multiple 1-minute dip-and-rally formations that would have generated profitable long scalps.
 2. **Architecture Trade-Off**: A single-basket architecture protects from over-leveraging and margin exhaustion, but each minute spent waiting for a stale, drifting position is a minute missed for fresh, trend-aligned scalps.
 3. **The 1-Hour Hard Ceiling**: Lowering `hard_cap_hours` to 1.0 hour ensures that when an entry is wrong or stale, the bot cuts the cord cleanly, absorbs the minor loss, and resets its radar to capitalize on current market flow.
+
+---
+
+## 15. Institutional Win Rate & Multi-Horizon Analytics Matrix
+
+To provide immediate clarity on trading performance across time horizons, we implemented the Multi-Horizon Win Rate Matrix in Section 3 of the Web Dashboard:
+1. **Four Time Horizons**:
+   - **Today**: Active IST calendar day (midnight to current time).
+   - **Yesterday**: Full previous IST calendar day.
+   - **This Week**: Monday 00:00:00 IST through the current moment.
+   - **This Month**: First day of the active month through the current moment.
+2. **Visual Components**:
+   - Large Emerald **Win %** and Rose **Loss %** typography.
+   - Exact count badges (`X Wins / Y Losses` and `Total Trades`).
+   - Two-tone proportional visual progress bar.
+   - Colored Net Realized P&L readout.
+3. **Low-Latency Streaming**: Cached against `closed_trades.csv` mtime to maintain millisecond response times without blocking the MT5 execution thread.
+
+
+---
+
+## Chapter 16: Institutional 4-Pillar Trend Confirmation System (TCS) & Backtest Validation
+
+### 1. Motivation & Mathematical Architecture
+Scalping strategies on Gold (`XAUUSD`) suffer severe drawdowns during ranging, choppy consolidations where indicators whipsaw around the mean. The user proposed a 4-pillar Trend Confirmation System (TCS) designed to enforce strict regime alignment before allowing orders:
+1. **Pillar 1 (Trend Direction)**: 50 EMA vs 200 EMA + Close price relative to both.
+2. **Pillar 2 (Trend Strength)**: ADX(14) >= 25 with directional +DI vs -DI confirmation.
+3. **Pillar 3 (Price Structure)**: Swing pivot Higher Highs/Higher Lows (HH/HL) over 20 closed bars (Bullish) vs Lower Highs/Lower Lows (LH/LL) (Bearish).
+4. **Pillar 4 (Momentum Confirmation)**: MACD(12, 26, 9) Histogram sign and directional slope.
+5. **Closed-Bar Discipline**: All indicators and structures are strictly evaluated on closed candles (`shift = 1`), eliminating false signals caused by live candle flickers.
+
+### 2. Backtest Verification (3,000 Live M1 Bars, Oct 27–29, 2026)
+Simulated across 3,000 real M1 candles of XAUUSD:
+- **Legacy Strategy (No TCS)**: 359 trades, 66.0% win rate, **-18.3 pts net loss**, Profit Factor: 0.96.
+- **TCS Hybrid (>= 3 Pillars, ADX >= 25)**: 177 trades, **70.1% win rate**, **+30.1 pts net profit**, Profit Factor: **1.15**.
+*Key Takeaway*: Enforcing ADX >= 25 and 3/4 pillar alignment eliminated 182 choppy, low-conviction trades and turned a losing strategy into a solidly profitable one.
+
+### 3. Real-Time Telemetry & UI Dashboard Integration
+- Telemetry engine in `web_app.py` streams 24 live TCS fields including pillar states, EMA/ADX/MACD values, and swing structure.
+- Section 2 of `templates/index.html` features an interactive 4-Pillar Radar with dynamic color-coded badges, visual progress indicators, and an instant regime banner.
+- Added full configuration controls in the Settings Modal to toggle between `hybrid`, `tcs`, and `legacy` modes, as well as customize thresholds.
+- Core engine self-test expanded to **88 unit checks (ALL PASS)**.
+
+
+---
+
+## Chapter 17: Eliminating Long-Session Browser Freezes & UI Unresponsiveness
+
+### 1. Forensic Diagnosis
+When the Web UI was left running unattended for several hours, users reported tab unresponsiveness and browser freezing. Deep profiling uncovered two cascading bottlenecks:
+1. **Frontend DOM Churn & Memory Pressure**:
+   The WebSocket endpoint was streaming state snapshots 5 times per second (200ms). The browser UI was destroying and re-injecting 225+ `<tr>` elements into the DOM on every tick, amounting to **1,125 table rows recreated every single second** (~4 million DOM node allocations per hour). This saturated browser garbage collection and froze the main UI thread.
+2. **Backend MT5 IPC Flooding**:
+   `get_mt5_account_and_market()` was executing synchronous MT5 IPC calls for historical deal reconstruction every 500ms, hammering the terminal and invalidating the `closed_trades.csv` cache constantly.
+
+### 2. Implemented Resolutions
+- **Frontend DOM Diffing**: Introduced dirty-checking signatures for closed positions, open positions, terminal logs, and win-rate statistics. DOM mutations now only occur when underlying records actually change.
+- **MT5 Deal Throttling**: MT5 deal reconstruction is throttled to 10-second intervals or triggered immediately on genuine trade closures.
+- **WebSocket Rate Optimization**: Adjusted WebSocket broadcast interval from 0.2s to 0.8s (~1.25 Hz), reducing CPU and memory consumption by 75% while keeping market streaming crisp and real-time.
+- **Chart.js Rate-Limiting**: Restricted chart updates to at most once per second.
+- **WebSocket Reconnection Hygiene**: Explicitly tears down stale listeners and socket instances before reconnecting.

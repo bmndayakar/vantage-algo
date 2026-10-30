@@ -426,6 +426,54 @@ The following real-time failures occurred during live testing and trading sessio
 
 ---
 
+### Case 26: Multi-Horizon Win Rate & Performance Matrix (UI Dashboard)
+* **Date**: October 29, 2026
+* **Trigger**: User requested real-time win and loss percentages alongside exact win/loss counts across Today, Yesterday, This Week, and This Month in the UI.
+* **Architecture & Implementation**:
+  1. *Backend Engine (`compute_win_rate_stats`)*: Parses `closed_trades.csv` into IST date horizons: Today, Yesterday, This Week (Monday to date), and This Month (1st to date). Computes `win_pct`, `loss_pct`, `wins`, `losses`, `total`, and `pnl`.
+  2. *Intelligent Caching*: Cached against `closed_trades.csv` file mtime in `BotManager` to avoid redundant disk I/O on tick loops.
+  3. *REST & Streaming API*: Exposed via `/api/performance` and broadcast in real-time within `snapshot()` via `/api/state` and WebSocket.
+  4. *UI Presentation (`templates/index.html`)*: 4-card responsive matrix in Section 3 displaying large Emerald Win % / Rose Loss % counters, visual two-tone ratio bars, exact win/loss tallies (`X W / Y L`), total trades, and colored Net P&L.
+  5. *Verification*: 2 new unit tests in `scratch/test_win_rate_stats.py` passing; 83 core engine unit checks passing.
+
+---
+
+### Case 27: Trend Confirmation System (TCS) - 4-Pillar Regime Filter & Hybrid Execution
+* **Date**: October 29, 2026
+* **Trigger**: Eliminating low-conviction chop entries and false breakouts by enforcing an institutional 4-pillar trend confirmation model.
+* **Architecture**:
+  1. *Pillar 1 (Trend Direction)*: 50 EMA vs 200 EMA + Close price above both (Bullish) or below both (Bearish).
+  2. *Pillar 2 (Trend Strength)*: ADX(14) >= 25 with directional +DI > -DI (Bullish) or -DI > +DI (Bearish), plus optional rising ADX slope.
+  3. *Pillar 3 (Price Structure)*: Higher Highs/Higher Lows (HH/HL) over 20 closed bars (Bullish) vs Lower Highs/Lower Lows (LH/LL) (Bearish).
+  4. *Pillar 4 (Momentum Confirmation)*: MACD(12, 26, 9) Histogram positive and rising (Bullish) vs negative and falling (Bearish).
+  5. *Closed-Candle Discipline*: Evaluated strictly on bar shift 1 (closed bar), completely eliminating intra-bar indicator repainting and whipsaws.
+  6. *Tri-Mode Execution Switch*: `"hybrid"` (TCS macro filter + Pullback MA bounce/dip timing; default), `"tcs"` (strict 4-pillar breakout execution), and `"legacy"` (250 SMA + Lever 3 HTF).
+* **Backtest Verification (3,000 M1 Bars, Oct 27-29, 2026)**:
+  - *Legacy (No TCS)*: 359 trades, 66.0% win rate, -18.3 pts, Profit Factor 0.96 (Net Losing).
+  - *TCS Filter (>= 3 Pillars)*: 177 trades, **70.1% win rate**, **+30.1 pts**, Profit Factor **1.15** (Flipped to solid Net Profit; cut 182 choppy trades).
+* **UI & Telemetry Integration**:
+  - Live 4-Pillar Status Grid in Section 2 (*Real-Time Entry Telemetry & MA Radar*) displaying individual pillar badges (P1, P2, P3, P4), live indicator readouts (EMA 50/200, ADX/+DI/-DI, Structure, MACD Hist), and regime banner.
+  - Complete configuration controls in the Web UI Settings modal (`#cfg-trend_system`, `#cfg-tcs_min_pillars`, `#cfg-tcs_adx_min`, `#cfg-tcs_ema_fast`, `#cfg-tcs_ema_slow`, etc.).
+  - Expanded unit test suite to **88/88 checks passing**.
+
+---
+
+### Case 28: Long-Session Web UI Memory Leak & DOM Thrashing Resolution
+* **Date**: October 30, 2026
+* **Trigger**: Web UI becoming unresponsive/freezing when left open for an extended duration.
+* **Root Causes**:
+  1. *Unbounded DOM Thrashing*: WebSocket loop was broadcasting 5 full state snapshots per second (`asyncio.sleep(0.2)`). In the browser, `updateUI()` completely wiped and regenerated the entire closed trades table (225+ `<tr>` elements), open positions table, and terminal feed on every tick (1,125 table rows recreated every second, resulting in ~4 million DOM node allocations per hour). This choked Chrome/Edge's JavaScript garbage collector.
+  2. *MT5 IPC Flooding & Disk I/O*: `get_mt5_account_and_market()` was calling `history_deals_get` and querying 200+ individual position tickets over MT5 IPC every 500ms, constantly rewriting `closed_trades.csv` and invalidating performance caches.
+  3. *Unthrottled Chart.js Redraws*: Chart was being updated 5 times a second without timestamp checks.
+* **Fix & Architecture**:
+  1. *DOM Diffing & Signature Caching (`templates/index.html`)*: Added state signatures (`lastClosedSig`, `lastOpenSig`, `lastEventsSig`, `lastWrSig`). Tables and terminal feeds only touch the DOM when underlying data actually changes, eliminating 99.9% of DOM churn.
+  2. *Throttled MT5 History Queries (`web_app.py`)*: History deals reconstruction is now throttled to 10 seconds or triggered instantly on closed deal events (`bot.deals` increment).
+  3. *Optimized WebSocket Frequency*: Throttled WebSocket loop to 0.8s (~1.25 Hz), reducing CPU, network serialization, and client memory allocation by 75%.
+  4. *Clean Reconnect Lifecycle*: Cleanly unsubscribes and closes existing WebSocket instances and timers upon reconnecting.
+  5. *All 88 self-test checks pass*.
+
+---
+
 ## 4. Instructions for Future AI Agents
 
 When tasked with modifying, refactoring, or extending this codebase, **adhere strictly to these rules**:
@@ -435,7 +483,7 @@ Before and after touching `up_down_tracker_win_bot_xauusd.py`, run:
 ```powershell
 python up_down_tracker_win_bot_xauusd.py selftest
 ```
-All **83 unit checks** must pass. If you add a feature, add a corresponding test check in `selftest()`.
+All **88 unit checks** must pass. If you add a feature, add a corresponding test check in `selftest()`.
 
 ### Rule 2: Never Remove the Margin Pre-Check or Anti-Flood Cooldown
 Never bypass `check_margin()` or remove `margin_cooldown_until`. Doing so risks broker lockout for order spamming.

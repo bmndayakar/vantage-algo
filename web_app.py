@@ -118,6 +118,8 @@ def compute_entry_telemetry(
     htf_dir: int = 0,
     htf_fast: float = 0.0,
     htf_slow: float = 0.0,
+    trend_system: str = "hybrid",
+    tcs_state: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     max_dist = float(max_dist or 0.0)
     side = (side or "both").lower()
@@ -156,6 +158,31 @@ def compute_entry_telemetry(
             "rsi_status": rsi_status,
             "rsi_ob": round(rsi_ob, 1),
             "rsi_os": round(rsi_os, 1),
+            "trend_system": trend_system,
+            "tcs_dir": 0,
+            "tcs_status": "CALCULATING...",
+            "tcs_bull_score": 0,
+            "tcs_bear_score": 0,
+            "tcs_ema_fast": 0.0,
+            "tcs_ema_slow": 0.0,
+            "tcs_adx": 0.0,
+            "tcs_adx_rising": False,
+            "tcs_di_plus": 0.0,
+            "tcs_di_minus": 0.0,
+            "tcs_structure": "CALCULATING...",
+            "tcs_macd": 0.0,
+            "tcs_macd_sig": 0.0,
+            "tcs_macd_hist": 0.0,
+            "tcs_macd_rising": False,
+            "tcs_p1_bull": False,
+            "tcs_p1_bear": False,
+            "tcs_p2_bull": False,
+            "tcs_p2_bear": False,
+            "tcs_p3_bull": False,
+            "tcs_p3_bear": False,
+            "tcs_p4_bull": False,
+            "tcs_p4_bear": False,
+            "tcs_bar_closed": True,
         }
 
     dist = abs(bid - ma)
@@ -276,9 +303,37 @@ def compute_entry_telemetry(
             target_entry_price = buy_price if bid >= ma else sell_price
         target_entry_desc = f"BUY: {buy_desc}  |  SELL: {sell_desc}"
 
-    # Lever 3: Higher-Timeframe (HTF) Macro Alignment
+    # Directional Overrides: TCS (4-Pillar System) if active, else Lever 3 HTF
+    tcs = tcs_state or {}
+    tcs_dir = int(tcs.get("direction", 0))
+    tcs_status = str(tcs.get("status", "NEUTRAL"))
+    b_score = int(tcs.get("bull_score", 0))
+    s_score = int(tcs.get("bear_score", 0))
+
     htf_status = "BULLISH" if htf_dir == 1 else ("BEARISH" if htf_dir == -1 else "NEUTRAL")
-    if htf_filter and htf_dir != 0:
+
+    if trend_system in ("tcs", "hybrid") and tcs:
+        if tcs_dir == 1:
+            sell_ready = False
+            sell_desc = f"Blocked by TCS Bullish Confirmation ({b_score}/4 Pillars)"
+            action_side = f"BUY ONLY (TCS BULLISH {b_score}/4)"
+            target_entry_price = buy_price
+            target_entry_desc = f"TCS Bullish ({b_score}/4): {buy_desc}"
+        elif tcs_dir == -1:
+            buy_ready = False
+            buy_desc = f"Blocked by TCS Bearish Confirmation ({s_score}/4 Pillars)"
+            action_side = f"SELL ONLY (TCS BEARISH {s_score}/4)"
+            target_entry_price = sell_price
+            target_entry_desc = f"TCS Bearish ({s_score}/4): {sell_desc}"
+        else:
+            buy_ready = False
+            sell_ready = False
+            in_entry_zone = False
+            action_side = f"NO TRADE (TCS CHOP FILTERED {b_score}B/{s_score}S)"
+            target_entry_desc = f"⚠️ Chop Filter Active ({b_score}B/{s_score}S < Min Pillars) - Orders Blocked"
+            buy_desc = f"Blocked: TCS Choppy ({b_score}B/{s_score}S)"
+            sell_desc = f"Blocked: TCS Choppy ({b_score}B/{s_score}S)"
+    elif htf_filter and htf_dir != 0:
         if htf_dir == 1: # Bullish: BUY only
             sell_ready = False
             sell_desc = f"Blocked by {htf_tf} Bullish Momentum ({htf_fast:.2f} > {htf_slow:.2f})"
@@ -352,6 +407,31 @@ def compute_entry_telemetry(
         "htf_status": htf_status,
         "htf_fast": round(htf_fast, 2),
         "htf_slow": round(htf_slow, 2),
+        "trend_system": trend_system,
+        "tcs_dir": tcs_dir,
+        "tcs_status": tcs_status,
+        "tcs_bull_score": b_score,
+        "tcs_bear_score": s_score,
+        "tcs_ema_fast": tcs.get("ema_fast", 0.0),
+        "tcs_ema_slow": tcs.get("ema_slow", 0.0),
+        "tcs_adx": tcs.get("adx", 0.0),
+        "tcs_adx_rising": tcs.get("adx_rising", False),
+        "tcs_di_plus": tcs.get("di_plus", 0.0),
+        "tcs_di_minus": tcs.get("di_minus", 0.0),
+        "tcs_structure": tcs.get("structure", "CHOPPY"),
+        "tcs_macd": tcs.get("macd", 0.0),
+        "tcs_macd_sig": tcs.get("macd_sig", 0.0),
+        "tcs_macd_hist": tcs.get("macd_hist", 0.0),
+        "tcs_macd_rising": tcs.get("macd_rising", False),
+        "tcs_p1_bull": tcs.get("p1_bull", False),
+        "tcs_p1_bear": tcs.get("p1_bear", False),
+        "tcs_p2_bull": tcs.get("p2_bull", False),
+        "tcs_p2_bear": tcs.get("p2_bear", False),
+        "tcs_p3_bull": tcs.get("p3_bull", False),
+        "tcs_p3_bear": tcs.get("p3_bear", False),
+        "tcs_p4_bull": tcs.get("p4_bull", False),
+        "tcs_p4_bear": tcs.get("p4_bear", False),
+        "tcs_bar_closed": tcs.get("bar_closed", True),
     }
 
 
@@ -565,6 +645,92 @@ def sync_closed_trades_to_csv(filepath: str, closed_positions: List[Dict[str, An
             logger.error(f"Failed to write closed_trades.csv: {e}")
 
     return added_count
+
+
+def compute_win_rate_stats(filepath: str, server_offset: float = 2.0) -> Dict[str, Any]:
+    """
+    Computes institutional win rate and loss statistics across four key horizons:
+    - Today (current IST calendar day)
+    - Yesterday (previous IST calendar day)
+    - This Week (Monday 00:00:00 to now)
+    - This Month (1st day of month 00:00:00 to now)
+
+    Returns structured metrics:
+    - wins, losses, scratches/breakeven, total
+    - win_pct (float), loss_pct (float)
+    - net_pnl (float)
+    """
+    now_ist = dt.datetime.utcnow() + dt.timedelta(hours=5, minutes=30)
+    today_date = now_ist.date()
+    yesterday_date = today_date - dt.timedelta(days=1)
+    week_start = today_date - dt.timedelta(days=today_date.weekday())
+    month_start = today_date.replace(day=1)
+
+    periods = {
+        "today": {"label": "Today", "wins": 0, "losses": 0, "be": 0, "total": 0, "pnl": 0.0, "win_pct": 0.0, "loss_pct": 0.0},
+        "yesterday": {"label": "Yesterday", "wins": 0, "losses": 0, "be": 0, "total": 0, "pnl": 0.0, "win_pct": 0.0, "loss_pct": 0.0},
+        "this_week": {"label": "This Week", "wins": 0, "losses": 0, "be": 0, "total": 0, "pnl": 0.0, "win_pct": 0.0, "loss_pct": 0.0},
+        "this_month": {"label": "This Month", "wins": 0, "losses": 0, "be": 0, "total": 0, "pnl": 0.0, "win_pct": 0.0, "loss_pct": 0.0},
+    }
+
+    if not os.path.exists(filepath):
+        return periods
+
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for r in reader:
+                close_str = r.get("close_time_ist", "")
+                if not close_str:
+                    continue
+                date_part = close_str.split(" ")[0]
+                try:
+                    d_obj = dt.datetime.strptime(date_part, "%Y-%m-%d").date()
+                except Exception:
+                    continue
+
+                try:
+                    pnl = float(r.get("net_pnl", 0.0))
+                except Exception:
+                    pnl = 0.0
+
+                is_win = pnl > 0.001
+                is_loss = pnl < -0.001
+                is_be = not is_win and not is_loss
+
+                matches = []
+                if d_obj == today_date:
+                    matches.append("today")
+                if d_obj == yesterday_date:
+                    matches.append("yesterday")
+                if week_start <= d_obj <= today_date:
+                    matches.append("this_week")
+                if month_start <= d_obj <= today_date:
+                    matches.append("this_month")
+
+                for m in matches:
+                    bucket = periods[m]
+                    bucket["total"] += 1
+                    bucket["pnl"] += pnl
+                    if is_win:
+                        bucket["wins"] += 1
+                    elif is_loss:
+                        bucket["losses"] += 1
+                    else:
+                        bucket["be"] += 1
+
+        for k, b in periods.items():
+            tot = b["total"]
+            w = b["wins"]
+            l = b["losses"]
+            b["win_pct"] = round((w / tot * 100.0), 1) if tot > 0 else 0.0
+            b["loss_pct"] = round((l / tot * 100.0), 1) if tot > 0 else 0.0
+            b["pnl"] = round(b["pnl"], 2)
+
+    except Exception as e:
+        logger.error(f"Error computing win rate stats: {e}")
+
+    return periods
 
 
 def load_trade_excursions() -> Dict[str, Any]:
@@ -782,12 +948,19 @@ class BotManager:
         self.live_htf_dir: int = 0
         self.live_htf_fast: float = 0.0
         self.live_htf_slow: float = 0.0
+        self.live_tcs_state: Dict[str, Any] = {}
+        self.last_tcs_calc_time: float = 0.0
         self.trade_excursions: Dict[str, Any] = load_trade_excursions()
         self.last_excursions_save: float = 0.0
         self.history_period: str = "7d"
         self.session_profit: float = 0.0
         self.session_deals: int = 0
         self.has_initial_history_sync: bool = False
+        self.last_history_sync_time: float = 0.0
+        self.last_deals_count: int = -1
+        self._cached_win_rate_stats: Dict[str, Any] = {}
+        self._last_win_rate_calc_time: float = 0.0
+        self._last_csv_mtime: float = 0.0
 
     def load_persisted_config(self):
         if os.path.exists(CONFIG_FILE):
@@ -809,6 +982,18 @@ class BotManager:
                 logger.info(f"Loaded persisted config: symbol={self.cfg.symbol}, lots={self.cfg.lots}")
             except Exception as e:
                 logger.error(f"Failed to load persisted config: {e}")
+
+    def get_win_rate_stats(self) -> Dict[str, Any]:
+        """Returns institutional win rate metrics cached against closed_trades.csv mtime."""
+        try:
+            mtime = os.path.getmtime(CLOSED_TRADES_FILE) if os.path.exists(CLOSED_TRADES_FILE) else 0.0
+        except Exception:
+            mtime = 0.0
+        if mtime != self._last_csv_mtime or (time.time() - self._last_win_rate_calc_time > 5.0) or not self._cached_win_rate_stats:
+            self._cached_win_rate_stats = compute_win_rate_stats(CLOSED_TRADES_FILE, self.get_server_offset())
+            self._last_csv_mtime = mtime
+            self._last_win_rate_calc_time = time.time()
+        return self._cached_win_rate_stats
 
     def get_server_offset(self) -> float:
         """
@@ -1026,7 +1211,7 @@ class BotManager:
                         "tick_age_sec": 999999,
                     }
 
-            # Sync or calculate live MA, RSI and HTF trend
+            # Sync or calculate live MA, RSI, HTF trend, and TCS state
             if self.bot and getattr(self.bot, "ma", 0.0) > 0:
                 self.live_ma = float(self.bot.ma)
                 self.live_rsi = float(getattr(self.bot, "rsi", 50.0))
@@ -1034,7 +1219,24 @@ class BotManager:
                 self.live_htf_dir = int(getattr(self.bot, "htf_dir", 0))
                 self.live_htf_fast = float(getattr(self.bot, "htf_fast", 0.0))
                 self.live_htf_slow = float(getattr(self.bot, "htf_slow", 0.0))
+                self.live_tcs_state = getattr(self.bot, "tcs_state", {}) or {}
             else:
+                if time.time() - self.last_tcs_calc_time > 1.0:
+                    self.last_tcs_calc_time = time.time()
+                    try:
+                        br = MT5Broker(self.cfg)
+                        self.live_tcs_state = br.tcs_eval(
+                            tf_str=getattr(self.cfg, "tcs_tf", "M1"),
+                            ema_fast=getattr(self.cfg, "tcs_ema_fast", 50),
+                            ema_slow=getattr(self.cfg, "tcs_ema_slow", 200),
+                            adx_period=getattr(self.cfg, "tcs_adx_period", 14),
+                            adx_min=getattr(self.cfg, "tcs_adx_min", 25.0),
+                            require_rising=getattr(self.cfg, "tcs_adx_require_rising", False),
+                            lookback=getattr(self.cfg, "tcs_structure_bars", 20),
+                            min_pillars=getattr(self.cfg, "tcs_min_pillars", 3),
+                        )
+                    except Exception:
+                        pass
                 try:
                     tf_attr = "TIMEFRAME_" + self.cfg.tf.upper()
                     tf_val = getattr(mt5, tf_attr, mt5.TIMEFRAME_M1)
@@ -1163,22 +1365,31 @@ class BotManager:
                 except Exception as ex:
                     logger.debug(f"Initial trade history sync: {ex}")
 
-            deals = mt5.history_deals_get(start_dt, end_dt) or ()
-            self.closed_positions_list = reconstruct_closed_positions(
-                deals=deals,
-                fetch_pos_deals_fn=lambda pid: mt5.history_deals_get(position=pid),
-                magics=magics,
-                server_offset=server_offset,
-                trade_excursions=self.trade_excursions,
-            )
+            now_t = time.time()
+            cur_deals = getattr(self.bot, "deals", 0) if self.bot else 0
+            deals_changed = (cur_deals != self.last_deals_count)
+            time_since_sync = now_t - self.last_history_sync_time
 
-            # Auto-sync closed trades to offline CSV ledger
-            if self.closed_positions_list:
-                sync_closed_trades_to_csv(
-                    filepath=CLOSED_TRADES_FILE,
-                    closed_positions=self.closed_positions_list,
+            # Throttle history deal reconstruction: run every 10s or when a trade closes
+            if not self.has_initial_history_sync or deals_changed or (time_since_sync >= 10.0):
+                self.last_history_sync_time = now_t
+                self.last_deals_count = cur_deals
+                deals = mt5.history_deals_get(start_dt, end_dt) or ()
+                self.closed_positions_list = reconstruct_closed_positions(
+                    deals=deals,
+                    fetch_pos_deals_fn=lambda pid: mt5.history_deals_get(position=pid),
+                    magics=magics,
                     server_offset=server_offset,
+                    trade_excursions=self.trade_excursions,
                 )
+
+                # Auto-sync closed trades to offline CSV ledger
+                if self.closed_positions_list:
+                    sync_closed_trades_to_csv(
+                        filepath=CLOSED_TRADES_FILE,
+                        closed_positions=self.closed_positions_list,
+                        server_offset=server_offset,
+                    )
 
             if excursions_dirty and (time.time() - self.last_excursions_save > 5.0):
                 self.last_excursions_save = time.time()
@@ -1511,6 +1722,8 @@ class BotManager:
             htf_dir=int(getattr(self.bot, "htf_dir", self.live_htf_dir)),
             htf_fast=float(getattr(self.bot, "htf_fast", self.live_htf_fast)),
             htf_slow=float(getattr(self.bot, "htf_slow", self.live_htf_slow)),
+            trend_system=getattr(self.cfg, "trend_system", "hybrid"),
+            tcs_state=getattr(self.bot, "tcs_state", self.live_tcs_state) or {},
         )
 
         server_offset = self.get_server_offset()
@@ -1639,8 +1852,9 @@ class BotManager:
             "bot": bot_data,
             "telemetry": telemetry,
             "positions": self.positions_list,
-            "closed_positions": self.closed_positions_list,
+            "closed_positions": self.closed_positions_list[:50],
             "history_period": self.history_period,
+            "win_rate_stats": self.get_win_rate_stats(),
             "events": list(self.events),
             "pnl_history": list(self.pnl_history),
             "config": cfg_dict,
@@ -1648,6 +1862,10 @@ class BotManager:
 
 
 manager = BotManager()
+@app.get("/api/performance")
+async def get_performance():
+    return manager.get_win_rate_stats()
+
 
 
 @app.on_event("startup")
@@ -1817,10 +2035,10 @@ async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
     try:
         while True:
-            # Send latest state to client 5 times per second
+            # Send latest state to client ~1.25 times per second (smooth, low-latency, zero-leak)
             state = manager.snapshot()
             await ws.send_text(json.dumps(state))
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.8)
     except (WebSocketDisconnect, RuntimeError):
         pass
     except Exception as e:
